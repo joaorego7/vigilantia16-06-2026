@@ -1,0 +1,16 @@
+[project]
+name = "vigilantia"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "typer",
+    "pydantic",
+    "requests",
+    "PyYAML",
+    "beautifulsoup4",
+]
+
+[tool.pytest.ini_options]
+pythonpath = [
+    "src"
+]

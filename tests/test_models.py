@@ -1,7 +1,7 @@
 # tests/test_models.py
 
-from src.models.site_data import SiteData, Cookie, ThirdPartyScript, Form
-from src.models.finding import Finding
+from vigilantia.models.site_data import SiteData, Cookie, ThirdPartyScript, Form
+from vigilantia.models.finding import Finding
 from pydantic import HttpUrl
 
 # Comentário:
@@ -47,5 +47,5 @@ def test_create_basic_models():
         recommendation="Add consent banner",
     )
 
-    assert site_data.url == "https://example.com"
+    assert str(site_data.url) in {"https://example.com/", "https://example.com"}
     assert finding.id == "R01"

@@ -1,0 +1,21 @@
+# rules/gdpr_rules.yaml
+# Comentário:
+# Este ficheiro define regras de conformidade RGPD em formato YAML,
+# permitindo que alguém com perfil jurídico as edite sem mexer no código.
+
+rules:
+  - id: R05
+    name: "Privacy Policy Accessible"
+    description: "The privacy policy is missing or not linked from the main page."
+    check: "privacy_policy_url is None"
+    severity: "high"
+    article: "GDPR Art. 13 and 14"
+    recommendation: "Add a clear link to the privacy policy in the footer of all pages."
+
+  - id: R11
+    name: "Forms without purpose notice"
+    description: "Forms collect personal data without indicating the purpose of processing."
+    check: "forms_count > 0 and privacy_notice_near_form is False"
+    severity: "medium"
+    article: "GDPR Art. 13"
+    recommendation: "Add a short notice near each form explaining how the data will be used."
