@@ -1,0 +1,14 @@
+# Ambientes virtuais
+.venv/
+
+# Cache de Python
+__pycache__/
+*.pyc
+
+# Artefactos de build/empacotamento
+build/
+dist/
+*.spec
+
+# Egg info
+*.egg-info/
