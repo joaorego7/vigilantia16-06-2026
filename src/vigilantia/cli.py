@@ -1,40 +1,71 @@
-# src/cli.py
+# src/vigilantia/cli.py
 
 import typer
 from pydantic import BaseModel, HttpUrl, ValidationError
+from bs4 import BeautifulSoup
 
-app = typer.Typer(help="Vigilantia - RGPD audit tool for websites.")
+from vigilantia.scraper.fetcher import fetch_page
 
-# Comentário de cabeçalho:
-# Esta função é o ponto de entrada do subcomando 'scan'.
-# Recebe um URL como argumento posicional, valida o seu formato
-# e, nesta fase inicial, apenas imprime uma mensagem simples.
+app = typer.Typer(help="Vigilantia - RGPD audit tool for websites (MVP).")
+
+
 class UrlModel(BaseModel):
+    """
+    Simple model to validate a target URL using Pydantic.
+    """
     target_url: HttpUrl
 
 
 @app.command()
-def scan(url: str = typer.Argument(..., help="Target website URL (e.g. https://exemplo.pt)")):
+def scan(url: str = typer.Argument(..., help="Target website URL (e.g. https://example.com)")):
     """
-    Start a basic scan for the given URL.
+    Minimal viable scan: fetches HTML and prints simple statistics.
     """
+    # Comentário:
+    # Validação básica do URL usando Pydantic para garantir que é bem formado.
     try:
-        # Comentário:
-        # Aqui usamos Pydantic para validar se o URL fornecido tem um formato válido.
         UrlModel(target_url=url)
     except ValidationError:
-        typer.echo("URL inválido. Por favor, forneça um URL completo (ex: https://exemplo.pt).")
+        typer.echo("URL inválido. Por favor, forneça um URL completo (ex: https://example.com).")
         raise typer.Exit(code=1)
 
-    typer.echo(f"scan started for {url}")
+    typer.echo(f"Starting MVP scan for {url} ...")
+
+    # Comentário:
+    # Usamos o fetcher para obter o HTML da página alvo, com timeout e tratamento de erros.
+    try:
+        html = fetch_page(url)
+    except ValueError as exc:
+        typer.echo(f"Erro ao obter a página: {exc}")
+        raise typer.Exit(code=1)
+
+    # Comentário:
+    # A partir daqui, fazemos uma análise muito simples do HTML:
+    # contamos scripts, formulários e procuramos referências a "privacy".
+    soup = BeautifulSoup(html, "html.parser")
+
+    script_tags = soup.find_all("script")
+    form_tags = soup.find_all("form")
+    privacy_mentions = soup.find_all(string=lambda text: text and "privacy" in text.lower())
+
+    num_scripts = len(script_tags)
+    num_forms = len(form_tags)
+    num_privacy_mentions = len(privacy_mentions)
+
+    typer.echo("")
+    typer.echo("=== Vigilantia MVP Report ===")
+    typer.echo(f"URL analisado: {url}")
+    typer.echo(f"Número de scripts encontrados: {num_scripts}")
+    typer.echo(f"Número de formulários encontrados: {num_forms}")
+    typer.echo(f"Número de menções a 'privacy' no texto: {num_privacy_mentions}")
+    typer.echo("")
+    typer.echo("Nota: Esta é apenas uma análise mínima (MVP). A extração RGPD completa será adicionada nas próximas semanas.")
 
 
 def main():
     """
     Main entrypoint for the Vigilantia CLI.
     """
-    # Comentário:
-    # Esta função permite executar o CLI com 'python -m src.cli'.
     app()
 
 
