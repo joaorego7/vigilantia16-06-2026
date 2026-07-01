@@ -53,22 +53,83 @@ def load_rules_from_file(path: str) -> RulesConfig:
     return RulesConfig(**raw_data)
 
 
-def evaluate_rules(site_data: SiteData, rules_config: RulesConfig) -> List[Finding]:
+def evaluate_rules(
+    site_data: SiteData,
+    rules_config: RulesConfig,
+    policy_flags: Dict[str, bool],
+) -> List[Finding]:
     """
-    Evaluate GDPR rules against the given SiteData instance.
+    Avalia as regras RGPD contra o SiteData e as flags da política de privacidade.
 
-    :param site_data: Collected data about a website.
-    :param rules_config: Loaded GDPR rules configuration.
-    :return: List of Finding objects representing non-compliances.
+    :param site_data: Dados recolhidos sobre o site (cookies, formulários, etc.).
+    :param rules_config: Conjunto de regras RGPD carregadas do ficheiro YAML.
+    :param policy_flags: Dicionário de flags sobre a política de privacidade,
+                         por exemplo, resultado de check_required_elements.
+    :return: Lista de objetos Finding que representam não-conformidades.
     """
     findings: List[Finding] = []
 
-    # Comentário:
-    # Nesta fase, ainda não implementamos a lógica real de avaliação.
-    # Vamos apenas devolver uma lista vazia, servindo de esqueleto
-    # para as próximas semanas, onde as expressões 'check' serão avaliadas.
+    # =========================
+    # Regra R05 - Política de privacidade ausente ou inacessível
+    # =========================
     #
-    # Mais tarde, iremos transformar o SiteData em um conjunto de variáveis
-    # (por exemplo, forms_count, privacy_policy_url, etc.) e avaliar as
-    # expressões definidas em cada regra.
+    # Lógica: se o campo privacy_policy_url do SiteData estiver vazio (None),
+    # criamos uma não-conformidade correspondente à regra R05.
+    if site_data.privacy_policy_url is None:
+        maybe_rule = next(
+            (rule for rule in rules_config.rules if rule.id == "R05"),
+            None,
+        )
+
+        if maybe_rule is not None:
+            finding = Finding(
+                id=maybe_rule.id,
+                name=maybe_rule.name,
+                description=maybe_rule.description,
+                severity=maybe_rule.severity,
+                article=maybe_rule.article,
+                recommendation=maybe_rule.recommendation,
+                evidence="Campo privacy_policy_url em SiteData está vazio (None).",
+            )
+            findings.append(finding)
+
+    # =========================
+    # Regra R07 - Política não menciona direito ao apagamento
+    # =========================
+    #
+    # Lógica: se a flag right_erasure for False, significa que o texto da
+    # política analisado não contém nenhuma expressão relativa ao direito
+    # ao apagamento / direito a ser esquecido.
+    #
+    # Só faz sentido avaliar esta regra se existir política (privacy_policy_url
+    # não for None) e se já tivermos policy_flags calculadas.
+    if site_data.privacy_policy_url is not None:
+        # Obtém o valor da flag; se não existir, assume False como valor seguro.
+        has_right_erasure = policy_flags.get("right_erasure", False)
+
+        if not has_right_erasure:
+            maybe_rule = next(
+                (rule for rule in rules_config.rules if rule.id == "R07"),
+                None,
+            )
+
+            if maybe_rule is not None:
+                finding = Finding(
+                    id=maybe_rule.id,
+                    name=maybe_rule.name,
+                    description=maybe_rule.description,
+                    severity=maybe_rule.severity,
+                    article=maybe_rule.article,
+                    recommendation=maybe_rule.recommendation,
+                    evidence=(
+                        "Texto da política de privacidade analisado "
+                        "não contém nenhuma referência ao direito ao apagamento."
+                    ),
+                )
+                findings.append(finding)
+
+    # No futuro, aqui acrescentas mais regras baseadas em:
+    # - outros campos de site_data (cookies, formulários, banner de consentimento)
+    # - outras flags da política (right_access, dpo_contact, retention_period, etc.)
+
     return findings

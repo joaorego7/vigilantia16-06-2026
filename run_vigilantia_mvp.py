@@ -1,6 +1,7 @@
 # run_vigilantia_mvp.py
 
 from vigilantia.scraper.fetcher import fetch_page
+from vigilantia.scraper.extractor import build_site_data
 from bs4 import BeautifulSoup
 
 
@@ -22,23 +23,36 @@ def main():
         input("\nPressione Enter para sair...")
         return
 
-    soup = BeautifulSoup(html, "html.parser")
+    # Comentário:
+    # Nesta fase, assumimos que o final_url é igual ao URL original
+    # e que o idioma é desconhecido ("unknown"); isto será melhorado futuramente.
+    final_url = url
+    language = "unknown"
 
-    scripts = soup.find_all("script")
-    forms = soup.find_all("form")
-    privacy_mentions = soup.find_all(string=lambda text: text and "privacy" in text.lower())
+    site_data = build_site_data(html, page_url=url, final_url=final_url, language=language)
 
     print("=== Vigilantia MVP Report ===")
-    print(f"URL analisado: {url}")
-    print(f"Número de scripts encontrados: {len(scripts)}")
-    print(f"Número de formulários encontrados: {len(forms)}")
-    print(f"Número de menções a 'privacy' no texto: {len(privacy_mentions)}")
-    print("\nNota: Esta é apenas uma análise mínima (MVP).")
+    print(f"URL analisado: {site_data.url}")
+    print(f"Número de scripts de terceiros encontrados: {len(site_data.third_party_scripts)}")
 
     # Comentário:
-    # Esta linha garante que a janela de terminal não fecha imediatamente
-    # após apresentar os resultados, permitindo ao tutor ler o relatório
-    # com calma antes de sair.
+    # Mostramos alguns exemplos de scripts de terceiros para o tutor ver
+    # que tipos de serviços estão a ser identificados.
+    for script in site_data.third_party_scripts[:5]:
+        print(f"  - {script.src} ({script.category})")
+
+    print(f"\nNúmero de formulários encontrados: {len(site_data.forms)}")
+    for form in site_data.forms[:3]:
+        print(f"  - Método: {form.method}, Action: {form.action}, Campos: {form.fields}")
+
+    if site_data.privacy_policy_url:
+        print(f"\nPolítica de privacidade encontrada em: {site_data.privacy_policy_url}")
+    else:
+        print("\nPolítica de privacidade: não encontrada (com base nas palavras-chave simples).")
+
+    print(f"\nBanner de consentimento detetado: {site_data.consent_banner_detected}")
+    print("\nNota: Esta ainda é uma análise mínima (MVP). A extração RGPD completa será adicionada nas próximas semanas.")
+
     input("\nPressione Enter para sair...")
 
 
