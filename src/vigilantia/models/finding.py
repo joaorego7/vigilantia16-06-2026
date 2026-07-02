@@ -1,14 +1,22 @@
-# src/models/finding.py
+# src/vigilantia/models/finding.py
 
 from pydantic import BaseModel
-from typing import Any, Dict
+from typing import Dict, Any
 
-# Comentário de cabeçalho:
-# Esta classe representa uma não-conformidade encontrada na análise RGPD,
-# incluindo a gravidade, descrição, evidências e recomendação.
+
 class Finding(BaseModel):
-    id: str                 # identificador único da regra (ex: "R01")
-    severity: str           # nível de gravidade (ex: "high", "medium", "low")
-    description: str        # descrição legível do problema
-    evidence: Dict[str, Any]  # dados concretos que justificam o finding
-    recommendation: str     # sugestão de correção para o problema
+    """
+    Representa uma não-conformidade RGPD encontrada na análise.
+
+    Campos:
+      - id: identificador único da regra (ex.: 'R05')
+      - severity: gravidade do problema ('high', 'medium', 'low')
+      - description: descrição do problema
+      - evidence: prova concreta (dados sobre o site/política que suportam o finding)
+      - recommendation: sugestão de correção para o site
+    """
+    id: str
+    severity: str
+    description: str
+    evidence: Dict[str, Any]
+    recommendation: str

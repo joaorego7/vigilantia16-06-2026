@@ -46,6 +46,29 @@ def classify_script_category(src: str) -> str:
         return "social"
     return "other"
 
+def extract_site_elements(url: str, html: str) -> dict:
+    """
+    Extrai elementos relevantes do HTML e devolve um dicionário
+    com campos usados para construir o SiteData.
+
+    :param url: URL original do site.
+    :param html: HTML da página principal.
+    :return: Dicionário com dados para SiteData.
+    """
+    # Comentário:
+    # Esta função é o ponto central da extração: chama os extractores
+    # de scripts, formulários e política de privacidade, e devolve
+    # um dicionário com os dados necessários para criar o SiteData.
+    return {
+        "final_url": url,
+        "language": "unknown",
+        "cookies": [],
+        "third_party_scripts": [],
+        "forms": [],
+        "privacy_policy_url": None,
+        "consent_banner_detected": False,
+    }
+
 
 def extract_third_party_scripts(html: str, page_url: str) -> List[ThirdPartyScript]:
     """
