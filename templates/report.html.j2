@@ -1,0 +1,37 @@
+<!-- templates/report.html.j2 -->
+<!doctype html>
+<html lang="pt">
+  <head>
+    <meta charset="utf-8">
+    <title>Relatório RGPD - {{ site_url }}</title>
+  </head>
+  <body>
+    <h1>Relatório RGPD para {{ site_url }}</h1>
+
+    <h2>Resumo por severidade</h2>
+    <ul>
+      <li>Problemas graves (high): {{ summary.high }}</li>
+      <li>Problemas médios (medium): {{ summary.medium }}</li>
+      <li>Problemas baixos (low): {{ summary.low }}</li>
+    </ul>
+
+    <h2>Detalhe das não-conformidades</h2>
+    <ul>
+      {% for f in findings %}
+        <li>
+          [{{ f.severity }}] {{ f.id }} - {{ f.description }}<br>
+          <strong>Recomendação:</strong> {{ f.recommendation }}<br>
+          <strong>Evidência:</strong>
+          {% if f.evidence is mapping %}
+            {{ f.evidence.get("message") }}
+          {% else %}
+            {{ f.evidence }}
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+
+    <hr>
+    <p><strong>Aviso legal:</strong> {{ legal_disclaimer }}</p>
+  </body>
+</html>

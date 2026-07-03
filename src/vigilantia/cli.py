@@ -82,7 +82,16 @@ def scan(url: str = typer.Argument(..., help="Target website URL (e.g. https://e
     else:
         print("Nenhuma não-conformidade RGPD detetada nas regras atuais.\n")
 
+ # 6) Geração de relatório HTML
+    from vigilantia.reporter import generate_html_report
 
+    html = generate_html_report(site_data.url, findings)
+    output_path = "relatorio.html"
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(html)
+
+    typer.echo(f"Relatório HTML gerado em: {output_path}")
+    
 def main():
     app()
 
