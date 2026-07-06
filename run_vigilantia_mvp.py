@@ -41,7 +41,8 @@ def scan():
     # Parte 1: MVP antigo (scraping simples)
     # ==============================
     try:
-        html = fetch_page(url)
+        fetch_result = fetch_page(url)
+        html = fetch_result.html
     except ValueError as exc:
         print(f"Erro ao obter a página: {exc}")
         return

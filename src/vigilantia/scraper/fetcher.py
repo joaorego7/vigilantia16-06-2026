@@ -1,48 +1,48 @@
 # src/scraper/fetcher.py
 
 from typing import Optional
-
 import logging
-import requests
 from pydantic import BaseModel, HttpUrl, ValidationError
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
 # Comentário de cabeçalho:
-# Este módulo trata da obtenção do HTML de uma página web usando pedidos HTTP.
-# Nesta fase, apenas fazemos scraping estático com a biblioteca requests,
-# com timeout, user-agent customizado e tratamento de erros.
-
+# Este módulo trata da obtenção do HTML de uma página web usando Playwright (Headless Browser).
+# Nesta fase, usamos a API síncrona do Playwright para garantir que o JavaScript é executado
+# e todo o conteúdo dinâmico é carregado antes de extrairmos o HTML.
 
 logger = logging.getLogger(__name__)
 
 
 class FetchConfig(BaseModel):
     """
-    Configuration for the HTTP fetch operation.
+    Configuration for the Playwright fetch operation.
     """
-
-    timeout_seconds: int = 10
+    timeout_seconds: int = 15
     verify_tls: bool = True
+
+class FetchResult(BaseModel):
+    html: str
+    final_url: str
+    cookies: list[dict]
 
 
 class UrlModel(BaseModel):
     """
     Simple model to validate a target URL using Pydantic.
     """
-
     target_url: HttpUrl
 
 
-def fetch_page(url: str, config: Optional[FetchConfig] = None) -> str:
+def fetch_page(url: str, config: Optional[FetchConfig] = None) -> FetchResult:
     """
-    Fetch the HTML content of the given URL using an HTTP GET request.
+    Fetch the HTML content of the given URL using Playwright.
+    Wait for network idle to ensure dynamic content is loaded.
 
     :param url: Target website URL as a string.
     :param config: Optional FetchConfig with timeout and TLS verification options.
-    :return: HTML content of the page as a string.
+    :return: FetchResult containing HTML, final_url, and cookies.
     :raises ValueError: If the URL is invalid or the request fails.
     """
-    # Comentário:
-    # Primeiro, validamos o URL com Pydantic para garantir que tem um formato correto.
     try:
         UrlModel(target_url=url)
     except ValidationError:
@@ -51,40 +51,47 @@ def fetch_page(url: str, config: Optional[FetchConfig] = None) -> str:
     if config is None:
         config = FetchConfig()
 
-    headers = {
-        # Comentário:
-        # Este User-Agent simula um browser real para reduzir a probabilidade
-        # de o pedido ser bloqueado por mecanismos anti-bot básicos.
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/123.0 Safari/537.36"
-        )
-    }
-
     try:
-        # Comentário:
-        # Aqui fazemos o pedido HTTP com timeout configurável e verificação de TLS.
-        response = requests.get(
-            url,
-            headers=headers,
-            timeout=config.timeout_seconds,
-            verify=config.verify_tls,
-        )
-    except requests.exceptions.RequestException as exc:
-        # Comentário:
-        # Qualquer erro de rede (DNS, timeout, etc.) é registado e convertido
-        # numa exceção genérica para o resto da aplicação.
-        logger.error("Network error while fetching %s: %s", url, exc)
-        raise ValueError(f"Network error while fetching {url}") from exc
-
-    # Comentário:
-    # Verificamos se o código de estado é 200 OK. Outros códigos podem indicar
-    # erros do lado do servidor ou do cliente.
-    if not response.ok:
-        logger.warning("Non-success status code %s for URL %s", response.status_code, url)
-        raise ValueError(f"Failed to fetch {url}: HTTP {response.status_code}")
-
-    # Comentário:
-    # Se tudo correu bem, devolvemos o conteúdo HTML como texto.
-    return response.text
+        with sync_playwright() as p:
+            # Lança o Chromium em modo headless
+            browser = p.chromium.launch(headless=True)
+            
+            # Configura um contexto com ignore_https_errors opcional e um User-Agent realista
+            context = browser.new_context(
+                ignore_https_errors=not config.verify_tls,
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/123.0 Safari/537.36"
+                )
+            )
+            page = context.new_page()
+            
+            # Navega para o URL e aguarda que o tráfego de rede acalme (networkidle)
+            response = page.goto(
+                url,
+                timeout=config.timeout_seconds * 1000,
+                wait_until="networkidle"
+            )
+            
+            if response is None:
+                browser.close()
+                raise ValueError(f"Failed to fetch {url}: No response received.")
+            
+            if not response.ok:
+                logger.warning("Non-success status code %s for URL %s", response.status, url)
+                browser.close()
+                raise ValueError(f"Failed to fetch {url}: HTTP {response.status}")
+            
+            html_content = page.content()
+            final_url = page.url
+            cookies = context.cookies()
+            browser.close()
+            return FetchResult(html=html_content, final_url=final_url, cookies=cookies)
+            
+    except PlaywrightTimeoutError as exc:
+        logger.error("Timeout error while fetching %s: %s", url, exc)
+        raise ValueError(f"Timeout error while fetching {url}") from exc
+    except Exception as exc:
+        logger.error("Error while fetching %s: %s", url, exc)
+        raise ValueError(f"Error while fetching {url}") from exc

@@ -8,6 +8,7 @@ dependencies = [
     "requests",
     "PyYAML",
     "beautifulsoup4",
+    "playwright",
 ]
 
 [tool.pytest.ini_options]

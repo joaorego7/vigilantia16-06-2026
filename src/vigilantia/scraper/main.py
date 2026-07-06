@@ -22,7 +22,10 @@ def build_site_data(url: str) -> SiteData:
     """
     # 1) Obter o HTML da página usando a função fetch_page
     #    (ela trata de decidir requests vs Playwright, conforme o teu design)
-    html = fetch_page(url)
+    fetch_result = fetch_page(url)
+    html = fetch_result.html
+    final_url = fetch_result.final_url
+    raw_cookies = fetch_result.cookies
 
     # 2) Usar o extractor para analisar o HTML e extrair:
     #    - cookies
@@ -33,16 +36,29 @@ def build_site_data(url: str) -> SiteData:
     #
     #    Vamos assumir que extract_site_elements devolve um dicionário
     #    com os campos necessários para criar o SiteData.
-    extracted = extract_site_elements(url=url, html=html)
+    extracted = extract_site_elements(url=final_url, html=html)
 
     # 3) Construir o objeto SiteData com base nos dados extraídos.
     #    Aqui estamos a mapear explicitamente o dicionário 'extracted'
     #    para os campos do modelo SiteData.
+    from vigilantia.models.site_data import Cookie
+    mapped_cookies = [
+        Cookie(
+            name=c.get("name", ""),
+            domain=c.get("domain", ""),
+            path=c.get("path", "/"),
+            secure=c.get("secure", False),
+            httpOnly=c.get("httpOnly", False),
+            sameSite=c.get("sameSite", None)
+        )
+        for c in raw_cookies
+    ]
+
     site_data = SiteData(
         url=url,
-        final_url=extracted.get("final_url", url),
+        final_url=final_url,
         language=extracted.get("language", "unknown"),
-        cookies=extracted.get("cookies", []),
+        cookies=mapped_cookies,
         third_party_scripts=extracted.get("third_party_scripts", []),
         forms=extracted.get("forms", []),
         privacy_policy_url=extracted.get("privacy_policy_url"),
