@@ -31,6 +31,20 @@
       {% endfor %}
     </ul>
 
+    <h2>Teste de Cookies Pré-Consentimento (Fase 2)</h2>
+    <p>Foram encontrados {{ total_cookies }} cookies instalados ANTES de qualquer consentimento.</p>
+    {% if tracking_cookies %}
+      <p style="color: red;"><strong>ATENÇÃO:</strong> Foram detetados {{ tracking_cookies|length }} cookies de tracking/analytics!</p>
+      <ul>
+        {% for c in tracking_cookies %}
+          <li>Nome: {{ c.name }} | Domínio: {{ c.domain }}</li>
+        {% endfor %}
+      </ul>
+      <p style="color: red;">Isto é uma possível violação grave do RGPD (falta de opt-in).</p>
+    {% else %}
+      <p style="color: green;"><strong>Excelente:</strong> Não foram detetados cookies de tracking óbvios antes do consentimento.</p>
+    {% endif %}
+
     <hr>
     <p><strong>Aviso legal:</strong> {{ legal_disclaimer }}</p>
   </body>

@@ -5,6 +5,11 @@ from collections import Counter
 from bs4 import BeautifulSoup
 from pydantic import ValidationError
 
+import sys
+import os
+# Adicionar a pasta 'src' ao sys.path para conseguir importar o 'vigilantia'
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+
 from vigilantia.scraper.fetcher import fetch_page
 from vigilantia.scraper.main import build_site_data
 from vigilantia.analyzer.privacy_text import (
@@ -13,7 +18,9 @@ from vigilantia.analyzer.privacy_text import (
     detect_language,
     check_required_elements,
 )
+from vigilantia.scraper.cookie_tester import analyze_cookies
 from vigilantia.analyzer.rule_engine import load_rules_from_file, evaluate_rules
+from vigilantia.reporter import generate_html_report
 
 app = typer.Typer()
 
@@ -79,7 +86,7 @@ def scan():
     if soup.find(string=lambda t: t and "cookies" in t.lower()):
         banner_detected = True
 
-    print("=== Vigilantia MVP Report ===")
+    print("=== Vigilantia Report ===")
     print(f"URL analisado: {url}")
     print(f"Número de scripts de terceiros encontrados: {len(third_party_scripts)}")
     for src in third_party_scripts[:5]:
@@ -94,8 +101,7 @@ def scan():
     else:
         print("\nPolítica de privacidade não encontrada na análise simples.")
 
-    print(f"\nBanner de consentimento detetado: {banner_detected}")
-    print("\nNota: Esta ainda é uma análise mínima (MVP). A extração RGPD completa está a ser adicionada.\n")
+    print(f"\nBanner de consentimento detetado: {banner_detected}\n")
 
     # ==============================
     # Parte 2: Fluxo RGPD com SiteData + regras
@@ -149,6 +155,39 @@ def scan():
         print("")
     else:
         print("Nenhuma não-conformidade RGPD detetada nas regras atuais.\n")
+
+    # ==============================
+    # Parte 3: Teste de Cookies Pré-Consentimento
+    # ==============================
+    print("=== Teste de Cookies Pré-Consentimento (Fase 2) ===")
+    cookies = site_data.cookies
+    print(f"Foram encontrados {len(cookies)} cookies instalados ANTES de qualquer consentimento.")
+    
+    analysis = analyze_cookies(cookies, url)
+    tracking_cookies = analysis.get("Tracking/Analytics", [])
+    
+    if tracking_cookies:
+        print(f"\n>> ATENÇÃO: Foram detetados {len(tracking_cookies)} cookies de tracking/analytics!")
+        for idx, c in enumerate(tracking_cookies, 1):
+            print(f"  {idx}. Nome: {getattr(c, 'name', '')} | Domínio: {getattr(c, 'domain', '')}")
+        print("Isto é uma possível violação grave do RGPD (falta de opt-in).")
+    else:
+        print("\n>> Excelente: Não foram detetados cookies de tracking óbvios antes do consentimento.")
+        
+    # ==============================
+    # Parte 4: Gerar HTML
+    # ==============================
+    html_content = generate_html_report(
+        site_url=url, 
+        findings=findings, 
+        total_cookies=len(cookies),
+        tracking_cookies=tracking_cookies
+    )
+    with open("relatorio.html", "w", encoding="utf-8") as f:
+        f.write(html_content)
+    
+    print("\n[+] Relatório atualizado e guardado em 'relatorio.html'.")
+    print("\n")
 
     input("Pressione Enter para sair...")
 

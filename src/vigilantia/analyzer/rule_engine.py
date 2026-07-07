@@ -38,8 +38,9 @@ def evaluate_rules(
     # R01 - Banner de consentimento de cookies ausente
     # =========================
     has_banner = site_data.consent_banner_detected
+    from vigilantia.scraper.cookie_tester import classify_cookie
     has_tracking_cookies = any(
-        cookie.category in ("analytics", "advertising", "tracking")
+        classify_cookie(cookie, str(site_data.final_url)) == "Tracking/Analytics"
         for cookie in (site_data.cookies or [])
     )
 

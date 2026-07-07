@@ -1,14 +1,18 @@
 # src/vigilantia/scraper/cookie_tester.py
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Union
 
-def classify_cookie(cookie: Dict[str, Any], url: str) -> str:
+def classify_cookie(cookie: Any, url: str) -> str:
     """
     Classifica um cookie como 'Estritamente Necessário' ou 'Tracking/Outros'
-    com base no seu nome e domínio.
+    com base no seu nome e domínio. Aceita dicionários ou objetos do modelo Cookie.
     """
-    name = cookie.get("name", "").lower()
-    domain = cookie.get("domain", "").lower()
+    if isinstance(cookie, dict):
+        name = cookie.get("name", "").lower()
+        domain = cookie.get("domain", "").lower()
+    else:
+        name = getattr(cookie, "name", "").lower()
+        domain = getattr(cookie, "domain", "").lower()
 
     # Nomes conhecidos de cookies de tracking/analytics
     tracking_names = [
@@ -41,7 +45,7 @@ def classify_cookie(cookie: Dict[str, Any], url: str) -> str:
     # embora na prática possam ser tracking de primeira parte não conhecidos.
     return "Desconhecido/Necessário/Funcional"
 
-def analyze_cookies(cookies: List[Dict[str, Any]], url: str) -> Dict[str, List[Dict[str, Any]]]:
+def analyze_cookies(cookies: List[Any], url: str) -> Dict[str, List[Any]]:
     """
     Analisa uma lista de cookies e agrupa-os pela sua classificação.
     """

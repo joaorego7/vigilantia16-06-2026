@@ -9,6 +9,8 @@ dependencies = [
     "PyYAML",
     "beautifulsoup4",
     "playwright",
+    "langdetect",
+    "jinja2",
 ]
 
 [tool.pytest.ini_options]
