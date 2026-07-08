@@ -130,7 +130,7 @@ def check_required_elements(text: str, language: str) -> Dict[str, bool]:
         # Direito de retificação
         "right_rectification": [
             "direito de retificação",
-            "direito de rectificação" # (com c)
+            "direito de rectificação",  # (com c) - bug corrigido: faltava a vírgula
             "retificar os dados",
             "corrigir os seus dados",
         ],

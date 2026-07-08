@@ -34,6 +34,12 @@ def evaluate_rules(
     policy_flags: Dict[str, bool],
 ) -> List[Finding]:
 
+    # Comentário:
+    # 'findings' tem de ser inicializada aqui, ANTES de qualquer regra a usar.
+    # (Bug corrigido: antes estava declarada a meio da função, depois de já
+    # ser usada em R01-R04, o que causava UnboundLocalError em tempo de execução.)
+    findings: List[Finding] = []
+
     # =========================
     # R01 - Banner de consentimento de cookies ausente
     # =========================
@@ -96,9 +102,13 @@ def evaluate_rules(
     # R03 - Scripts de analytics sem anonimização de IP
     # =========================
     for script in site_data.third_party_scripts or []:
+        # Comentário (bug corrigido):
+        # script.src é um HttpUrl do Pydantic, não uma string — não suporta
+        # o operador "in" diretamente. É preciso converter para str primeiro.
+        script_src = str(script.src)
         if (
-            "google-analytics" in script.src
-            or "gtag/js" in script.src
+            "google-analytics" in script_src
+            or "gtag/js" in script_src
         ):
             has_anonymize_ip = (
                 "anonymize_ip" in getattr(script, "config", "")
@@ -121,7 +131,7 @@ def evaluate_rules(
                                 "Foi detetado Google Analytics sem "
                                 "anonimização de IP."
                             ),
-                            "script": script.src,
+                            "script": script_src,
                         },
                     )
                     findings.append(finding)
@@ -156,8 +166,6 @@ def evaluate_rules(
                 },
             )
             findings.append(finding)
-
-    findings: List[Finding] = []
 
     # =========================
     # R05 - Política de privacidade ausente ou inacessível
@@ -280,7 +288,12 @@ def evaluate_rules(
     # R09 - Política não identifica o DPO quando obrigatório
     # =========================
     if site_data.privacy_policy_url is not None:
-        mentions_dpo = policy_flags.get("mentions_dpo", False)
+        # Comentário (bug corrigido):
+        # A chave usada aqui tinha de corresponder à chave devolvida por
+        # check_required_elements() em privacy_text.py, que é "dpo_contact"
+        # e não "mentions_dpo". Com a chave errada, esta regra disparava
+        # SEMPRE (falso positivo), mesmo quando a política mencionava o DPO.
+        mentions_dpo = policy_flags.get("dpo_contact", False)
 
         if not mentions_dpo:
             maybe_rule = next(
@@ -338,5 +351,59 @@ def evaluate_rules(
                     },
                 )
                 findings.append(finding)
+
+    # =========================
+    # R11 - Formulários que recolhem dados pessoais sem aviso de finalidade
+    # =========================
+    # Comentário:
+    # Esta regra estava definida no YAML mas não tinha lógica associada
+    # (regra "morta"). Consideramos que um campo é "dado pessoal" quando o
+    # seu nome bate com padrões comuns (email, telefone, morada, nome, etc.).
+    # Se o formulário tiver pelo menos um desses campos e não houver um
+    # aviso de privacidade perto dele (has_nearby_privacy_notice=False),
+    # assinalamos a não-conformidade.
+    personal_data_field_patterns = [
+        "email", "e-mail", "mail", "telefone", "phone", "telemovel",
+        "morada", "address", "nome", "name", "nif", "cc", "cartao",
+        "nascimento", "birth", "password", "senha",
+    ]
+
+    def _form_has_personal_data(form) -> bool:
+        return any(
+            pattern in (field or "").lower()
+            for field in form.fields
+            for pattern in personal_data_field_patterns
+        )
+
+    forms_without_notice = [
+        form
+        for form in (site_data.forms or [])
+        if _form_has_personal_data(form) and not getattr(form, "has_nearby_privacy_notice", False)
+    ]
+
+    if forms_without_notice:
+        maybe_rule = next(
+            (rule for rule in rules_config.rules if rule.id == "R11"),
+            None,
+        )
+
+        if maybe_rule is not None:
+            finding = Finding(
+                id=maybe_rule.id,
+                severity=maybe_rule.severity,
+                description=maybe_rule.description,
+                recommendation=maybe_rule.recommendation,
+                evidence={
+                    "message": (
+                        "Foram encontrados formulários que recolhem dados "
+                        "pessoais sem qualquer aviso de privacidade próximo."
+                    ),
+                    "forms": [
+                        {"action": f.action, "fields": f.fields}
+                        for f in forms_without_notice
+                    ],
+                },
+            )
+            findings.append(finding)
 
     return findings

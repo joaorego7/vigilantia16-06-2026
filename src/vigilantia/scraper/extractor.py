@@ -46,30 +46,6 @@ def classify_script_category(src: str) -> str:
         return "social"
     return "other"
 
-def extract_site_elements(url: str, html: str) -> dict:
-    """
-    Extrai elementos relevantes do HTML e devolve um dicionário
-    com campos usados para construir o SiteData.
-
-    :param url: URL original do site.
-    :param html: HTML da página principal.
-    :return: Dicionário com dados para SiteData.
-    """
-    # Comentário:
-    # Esta função é o ponto central da extração: chama os extractores
-    # de scripts, formulários e política de privacidade, e devolve
-    # um dicionário com os dados necessários para criar o SiteData.
-    return {
-        "final_url": url,
-        "language": "unknown",
-        "cookies": [],
-        "third_party_scripts": [],
-        "forms": [],
-        "privacy_policy_url": None,
-        "consent_banner_detected": False,
-    }
-
-
 def extract_third_party_scripts(html: str, page_url: str) -> List[ThirdPartyScript]:
     """
     Extract third-party scripts from the given HTML.
@@ -112,6 +88,51 @@ def extract_third_party_scripts(html: str, page_url: str) -> List[ThirdPartyScri
     return third_party_scripts
 
 
+# Comentário:
+# Palavras-chave usadas para detetar um "aviso de privacidade" (texto que
+# explica a finalidade do tratamento) perto de um formulário. É uma
+# heurística simples baseada em texto, não uma análise jurídica.
+_PRIVACY_NOTICE_KEYWORDS = [
+    "dados pessoais", "política de privacidade", "privacidade",
+    "rgpd", "gdpr", "finalidade", "tratamento dos seus dados",
+    "tratamento de dados", "privacy policy", "personal data",
+    "how we use your data", "how your data",
+]
+
+
+def _text_mentions_privacy_notice(text: str) -> bool:
+    """
+    Verifica se um bloco de texto contém alguma das palavras-chave
+    associadas a um aviso de privacidade.
+
+    :param text: Texto simples a analisar.
+    :return: True se alguma palavra-chave for encontrada.
+    """
+    lower_text = (text or "").lower()
+    return any(keyword in lower_text for keyword in _PRIVACY_NOTICE_KEYWORDS)
+
+
+def _has_nearby_privacy_notice(form_tag) -> bool:
+    """
+    Procura um aviso de privacidade perto de um formulário: dentro do
+    próprio formulário (ex.: texto de ajuda por baixo dos campos) ou no
+    elemento pai imediato (onde costuma estar um texto introdutório).
+
+    :param form_tag: Elemento <form> do BeautifulSoup.
+    :return: True se for encontrado texto relacionado com privacidade.
+    """
+    # Texto dentro do próprio formulário (labels, notas, checkboxes de consentimento).
+    if _text_mentions_privacy_notice(form_tag.get_text(separator=" ")):
+        return True
+
+    # Texto no elemento pai (comum ter uma frase introdutória antes do formulário).
+    parent = form_tag.parent
+    if parent is not None and _text_mentions_privacy_notice(parent.get_text(separator=" ")):
+        return True
+
+    return False
+
+
 def extract_forms(html: str, page_url: str) -> List[Form]:
     """
     Extract HTML forms from the given page.
@@ -124,7 +145,8 @@ def extract_forms(html: str, page_url: str) -> List[Form]:
     # Este método identifica todos os <form> e recolhe:
     # - action (URL de submissão)
     # - method (GET/POST)
-    # - fields (nomes dos campos de input/textarea).
+    # - fields (nomes dos campos de input/textarea)
+    # - has_nearby_privacy_notice (se há texto de privacidade perto).
     soup = BeautifulSoup(html, "html.parser")
     forms: List[Form] = []
 
@@ -154,6 +176,7 @@ def extract_forms(html: str, page_url: str) -> List[Form]:
                 action=action,
                 method=method,
                 fields=fields,
+                has_nearby_privacy_notice=_has_nearby_privacy_notice(form_tag),
             )
         )
 

@@ -2,7 +2,8 @@
 from jinja2 import Environment, FileSystemLoader
 from typing import List
 
-from vigilantia.models.finding import Finding  # ajusta este caminho ao teu projeto
+from vigilantia.models.finding import Finding
+from vigilantia.paths import TEMPLATES_DIR
 
 def generate_html_report(
     site_url: str, 
@@ -14,7 +15,11 @@ def generate_html_report(
     medium = sum(1 for f in findings if f.severity == "medium")
     low = sum(1 for f in findings if f.severity == "low")
 
-    env = Environment(loader=FileSystemLoader("templates"))
+    # Comentário (bug corrigido):
+    # Antes usava-se FileSystemLoader("templates"), um caminho relativo que
+    # só funcionava se o comando fosse executado a partir da raiz do
+    # repositório. Agora usamos o caminho absoluto de paths.py.
+    env = Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)))
     template = env.get_template("report.html.j2")
 
     html = template.render(

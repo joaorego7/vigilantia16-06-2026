@@ -30,6 +30,7 @@ class Form(BaseModel):
     action: Optional[str]  # URL para onde o formulário envia os dados
     method: str            # método HTTP (ex: "GET", "POST")
     fields: List[str]      # lista com os nomes dos campos (ex: ["email", "password"])
+    has_nearby_privacy_notice: bool = False  # existe texto de privacidade perto do formulário?
 
 
 # Comentário de cabeçalho:

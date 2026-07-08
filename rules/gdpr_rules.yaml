@@ -2,8 +2,46 @@
 # Comentário:
 # Este ficheiro define regras de conformidade RGPD em formato YAML,
 # permitindo que alguém com perfil jurídico as edite sem mexer no código.
+#
+# IMPORTANTE: cada regra aqui definida TEM de ter uma verificação
+# correspondente implementada em src/vigilantia/analyzer/rule_engine.py.
+# Os IDs (R01, R02, ...) são a chave de ligação entre os dois ficheiros.
+# Se adicionares uma regra aqui sem lhe corresponder lógica no motor,
+# ela nunca vai gerar findings (regra "morta").
 
 rules:
+  - id: R01
+    name: "Missing cookie consent banner"
+    description: "Tracking/analytics cookies were found but no cookie consent banner was detected on the page."
+    check: "has_tracking_cookies is True and consent_banner_detected is False"
+    severity: "high"
+    article: "GDPR Art. 6 and 7"
+    recommendation: "Implement a consent management platform (CMP) that blocks tracking cookies until the user opts in."
+
+  - id: R02
+    name: "Tracking cookies loaded before consent"
+    description: "Tracking/analytics cookies are set before the user has given any consent."
+    check: "has_tracking_cookies is True and consent_banner_detected is False"
+    severity: "high"
+    article: "GDPR Art. 6 and 7"
+    recommendation: "Configure the tag manager/CMP to only fire tracking scripts after explicit opt-in consent."
+
+  - id: R03
+    name: "Analytics script without IP anonymization"
+    description: "A Google Analytics / gtag.js script was detected without IP anonymization enabled."
+    check: "third_party_script matches analytics pattern and 'anonymize_ip' not in config"
+    severity: "medium"
+    article: "GDPR Art. 5(1)(c) - Data minimisation"
+    recommendation: "Enable IP anonymization (anonymize_ip) in the analytics configuration, or use a privacy-friendly analytics tool."
+
+  - id: R04
+    name: "Cookies without Secure/HttpOnly attributes"
+    description: "One or more cookies are missing the Secure and/or HttpOnly attributes."
+    check: "any cookie where secure is False or httpOnly is False"
+    severity: "medium"
+    article: "GDPR Art. 32 - Security of processing"
+    recommendation: "Set the Secure and HttpOnly flags on all cookies that do not need to be read by client-side JavaScript."
+
   - id: R05
     name: "Privacy Policy Accessible"
     description: "The privacy policy is missing or not linked from the main page."
@@ -12,10 +50,50 @@ rules:
     article: "GDPR Art. 13 and 14"
     recommendation: "Add a clear link to the privacy policy in the footer of all pages."
 
+  - id: R06
+    name: "Privacy policy missing right of access"
+    description: "The privacy policy text does not mention the data subject's right of access."
+    check: "policy_flags.right_access is False"
+    severity: "medium"
+    article: "GDPR Art. 15"
+    recommendation: "Explicitly describe how users can request access to their personal data."
+
+  - id: R07
+    name: "Privacy policy missing right to erasure"
+    description: "The privacy policy text does not mention the right to erasure ('right to be forgotten')."
+    check: "policy_flags.right_erasure is False"
+    severity: "medium"
+    article: "GDPR Art. 17"
+    recommendation: "Explicitly describe how users can request deletion of their personal data."
+
+  - id: R08
+    name: "Privacy policy missing international transfers section"
+    description: "The privacy policy text does not mention international data transfers outside the EU/EEA."
+    check: "policy_flags.international_transfers is False"
+    severity: "medium"
+    article: "GDPR Art. 44-49"
+    recommendation: "If personal data is transferred outside the EU/EEA, disclose the legal safeguards used (e.g. SCCs, adequacy decisions)."
+
+  - id: R09
+    name: "Privacy policy missing DPO contact"
+    description: "The privacy policy text does not identify a Data Protection Officer (DPO) or equivalent contact."
+    check: "policy_flags.mentions_dpo is False"
+    severity: "low"
+    article: "GDPR Art. 37-39"
+    recommendation: "If a DPO is required, publish their contact details in the privacy policy."
+
+  - id: R10
+    name: "Privacy policy missing data retention period"
+    description: "The privacy policy text does not specify how long personal data is kept."
+    check: "policy_flags.retention_period is False"
+    severity: "medium"
+    article: "GDPR Art. 13(2)(a) and 14(2)(a)"
+    recommendation: "State a clear retention period (or the criteria used to determine it) for each category of personal data."
+
   - id: R11
     name: "Forms without purpose notice"
-    description: "Forms collect personal data without indicating the purpose of processing."
-    check: "forms_count > 0 and privacy_notice_near_form is False"
+    description: "A form collects personal data (e.g. e-mail, phone, address) without a privacy notice near it explaining the purpose of processing."
+    check: "form has personal-data fields and has_nearby_privacy_notice is False"
     severity: "medium"
     article: "GDPR Art. 13"
-    recommendation: "Add a short notice near each form explaining how the data will be used."
+    recommendation: "Add a short notice near each form explaining how the submitted data will be used, and link to the full privacy policy."
