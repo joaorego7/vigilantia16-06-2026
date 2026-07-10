@@ -15,12 +15,28 @@ logger = logging.getLogger(__name__)
 
 class FetchConfig(BaseModel):
     """
-    Configuration for the Playwright fetch operation.
+    Configuração usada na operação de fetch (obtenção da página) com o Playwright.
+
+    Campos:
+      - timeout_seconds: tempo máximo (em segundos) de espera pela página antes de desistir.
+      - verify_tls: se True, valida certificados HTTPS normalmente; se False, ignora
+        erros de certificado (útil para testar sites com certificados inválidos/autoassinados).
     """
     timeout_seconds: int = 15
     verify_tls: bool = True
 
 class FetchResult(BaseModel):
+    """
+    Resultado devolvido por fetch_page() depois de carregar a página.
+
+    Campos:
+      - html: o HTML final da página, já com JavaScript executado.
+      - final_url: o URL onde a página acabou por ficar (pode ser diferente do
+        URL pedido, se tiver havido redirecionamentos).
+      - cookies: lista de cookies presentes no browser logo após o carregamento,
+        ou seja, ANTES de qualquer interação com banners de consentimento
+        (é a isto que chamamos "cookies pré-consentimento").
+    """
     html: str
     final_url: str
     cookies: list[dict]
@@ -28,20 +44,29 @@ class FetchResult(BaseModel):
 
 class UrlModel(BaseModel):
     """
-    Simple model to validate a target URL using Pydantic.
+    Modelo simples para validar um URL alvo, usando o Pydantic.
+    Serve só para confirmar que o texto recebido é mesmo um URL válido
+    (com esquema http/https) antes de tentarmos usá-lo no Playwright.
     """
     target_url: HttpUrl
 
 
 def fetch_page(url: str, config: Optional[FetchConfig] = None) -> FetchResult:
     """
-    Fetch the HTML content of the given URL using Playwright.
-    Wait for network idle to ensure dynamic content is loaded.
+    Vai buscar o conteúdo HTML do URL indicado, usando o Playwright (browser headless).
 
-    :param url: Target website URL as a string.
-    :param config: Optional FetchConfig with timeout and TLS verification options.
-    :return: FetchResult containing HTML, final_url, and cookies.
-    :raises ValueError: If the URL is invalid or the request fails.
+    Espera até a rede "acalmar" (networkidle) antes de ler o HTML, para garantir
+    que scripts assíncronos, chamadas a APIs e conteúdo carregado por JavaScript
+    já tiveram oportunidade de correr. Isto é importante para um scanner de RGPD,
+    porque muitos scripts de tracking só disparam depois do carregamento inicial.
+
+    :param url: URL do site a analisar (string).
+    :param config: Configuração opcional (timeout, validação TLS). Se omitido,
+        usa os valores por omissão de FetchConfig.
+    :return: Um FetchResult com o HTML, o URL final e os cookies capturados.
+    :raises ValueError: Se o URL for inválido, se não houver resposta, se a
+        resposta tiver um código de erro HTTP, ou se ocorrer um timeout/erro
+        de rede durante o carregamento.
     """
     try:
         UrlModel(target_url=url)
@@ -70,19 +95,26 @@ def fetch_page(url: str, config: Optional[FetchConfig] = None) -> FetchResult:
             # Navega para o URL e aguarda que o tráfego de rede acalme (networkidle)
             response = page.goto(
                 url,
-                timeout=config.timeout_seconds * 1000,
+                timeout=config.timeout_seconds * 3000,
                 wait_until="networkidle"
             )
             
             if response is None:
+                # Acontece em casos raros (ex.: navegação abortada); sem resposta,
+                # não há HTML nenhum para analisar, por isso desistimos aqui.
                 browser.close()
                 raise ValueError(f"Failed to fetch {url}: No response received.")
             
             if not response.ok:
+                # Código de estado fora do intervalo 2xx/3xx (ex.: 404, 500) —
+                # registamos um aviso e desistimos, para não analisar uma página de erro.
                 logger.warning("Non-success status code %s for URL %s", response.status, url)
                 browser.close()
                 raise ValueError(f"Failed to fetch {url}: HTTP {response.status}")
             
+            # Neste ponto a página carregou com sucesso: extraímos o HTML final
+            # (já com JavaScript executado), o URL final (após redirecionamentos)
+            # e os cookies presentes no contexto do browser neste preciso momento.
             html_content = page.content()
             final_url = page.url
             cookies = context.cookies()
@@ -90,8 +122,12 @@ def fetch_page(url: str, config: Optional[FetchConfig] = None) -> FetchResult:
             return FetchResult(html=html_content, final_url=final_url, cookies=cookies)
             
     except PlaywrightTimeoutError as exc:
+        # A página demorou mais do que timeout_seconds a responder/carregar.
         logger.error("Timeout error while fetching %s: %s", url, exc)
         raise ValueError(f"Timeout error while fetching {url}") from exc
     except Exception as exc:
+        # Qualquer outro erro inesperado (rede em baixo, DNS não resolve, etc.)
+        # é convertido em ValueError para manter uma interface de erros consistente
+        # para quem chama esta função.
         logger.error("Error while fetching %s: %s", url, exc)
         raise ValueError(f"Error while fetching {url}") from exc

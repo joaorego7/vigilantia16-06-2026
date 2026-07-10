@@ -15,10 +15,12 @@ from vigilantia.models.site_data import SiteData, Cookie, ThirdPartyScript, Form
 
 def _get_domain(url: str) -> str:
     """
-    Extract the domain from a URL string.
+    Extrai o domínio (hostname) de um URL.
 
-    :param url: URL as string.
-    :return: Domain (hostname) or empty string if parsing fails.
+    Exemplo: "https://www.exemplo.pt/pagina?x=1" -> "www.exemplo.pt"
+
+    :param url: URL em formato string.
+    :return: O domínio (hostname), ou string vazia se o URL não for válido.
     """
     # Comentário:
     # Esta função auxiliar simplifica a comparação entre domínios,
@@ -29,10 +31,14 @@ def _get_domain(url: str) -> str:
 
 def classify_script_category(src: str) -> str:
     """
-    Classify a third-party script into a simple category based on its URL.
+    Classifica um script de terceiros numa categoria simples, a partir do seu URL.
 
-    :param src: Script URL.
-    :return: Category string (e.g. "analytics", "advertising", "social", "other").
+    Usa correspondência de padrões de texto no URL (ex.: "google-analytics"
+    sugere analytics, "doubleclick" sugere publicidade). É uma heurística
+    básica, não uma lista exaustiva de todos os serviços possíveis.
+
+    :param src: URL do script (ex.: "https://www.google-analytics.com/analytics.js").
+    :return: Categoria em texto: "analytics", "advertising", "social" ou "other".
     """
     # Comentário:
     # Esta função tenta identificar o tipo de script a partir de padrões
@@ -48,11 +54,16 @@ def classify_script_category(src: str) -> str:
 
 def extract_third_party_scripts(html: str, page_url: str) -> List[ThirdPartyScript]:
     """
-    Extract third-party scripts from the given HTML.
+    Extrai a lista de scripts de terceiros presentes no HTML da página.
 
-    :param html: HTML content of the page.
-    :param page_url: Original page URL (used to determine the base domain).
-    :return: List of ThirdPartyScript objects.
+    Um script é considerado "de terceiros" quando o seu domínio é diferente
+    do domínio da própria página (ex.: um site "exemplo.pt" que carrega um
+    script de "google-analytics.com"). Scripts inline (sem atributo src) e
+    scripts do próprio domínio são ignorados.
+
+    :param html: Conteúdo HTML da página.
+    :param page_url: URL original da página (usado para determinar o domínio base).
+    :return: Lista de objetos ThirdPartyScript, um por cada script externo encontrado.
     """
     # Comentário:
     # Aqui percorremos todos os elementos <script> com atributo src
@@ -135,11 +146,20 @@ def _has_nearby_privacy_notice(form_tag) -> bool:
 
 def extract_forms(html: str, page_url: str) -> List[Form]:
     """
-    Extract HTML forms from the given page.
+    Extrai todos os formulários HTML (<form>) presentes na página.
 
-    :param html: HTML content of the page.
-    :param page_url: Original page URL (used to resolve relative actions).
-    :return: List of Form objects.
+    Para cada formulário, recolhe:
+      - o destino do envio (action), já resolvido para URL absoluto;
+      - o método HTTP (GET/POST);
+      - os nomes dos campos (inputs e textareas com atributo name);
+      - se existe algum aviso de privacidade próximo (ver _has_nearby_privacy_notice).
+
+    Esta informação é usada depois pelo motor de regras (R11) para detetar
+    formulários que recolhem dados pessoais sem explicar a finalidade.
+
+    :param html: Conteúdo HTML da página.
+    :param page_url: URL original da página (usado para resolver o "action" relativo).
+    :return: Lista de objetos Form, um por cada <form> encontrado.
     """
     # Comentário:
     # Este método identifica todos os <form> e recolhe:
@@ -185,11 +205,16 @@ def extract_forms(html: str, page_url: str) -> List[Form]:
 
 def extract_privacy_policy_url(html: str, page_url: str) -> Optional[str]:
     """
-    Try to find a link to the privacy policy in the HTML.
+    Tenta encontrar, na página, um link (<a>) que aponte para a política de
+    privacidade, termos de uso ou página de cookies.
 
-    :param html: HTML content of the page.
-    :param page_url: Original page URL (used to resolve relative links).
-    :return: URL string of the privacy policy, or None if not found.
+    A deteção é feita por palavras-chave no TEXTO do link (ex.: um link cujo
+    texto visível seja "Política de Privacidade" ou "Cookies"), não no URL —
+    por isso funciona independentemente de como o site nomeia o ficheiro/página.
+
+    :param html: Conteúdo HTML da página.
+    :param page_url: URL original da página (usado para resolver o link relativo).
+    :return: URL absoluto da política de privacidade, ou None se não for encontrado nenhum link.
     """
     # Comentário:
     # Este método procura <a> cujo texto sugira um link para a política
@@ -211,10 +236,16 @@ def extract_privacy_policy_url(html: str, page_url: str) -> Optional[str]:
 
 def detect_consent_banner(html: str) -> bool:
     """
-    Detect whether a cookie consent banner is present in the HTML.
+    Deteta se a página tem, aparentemente, um banner de consentimento de cookies.
 
-    :param html: HTML content of the page.
-    :return: True if a consent banner is likely present, False otherwise.
+    A deteção é feita por palavras-chave típicas de banners de CMP (Consent
+    Management Platform), como "aceitar cookies" ou "this site uses cookies".
+    É uma heurística de texto simples: não confirma se o banner é funcional
+    nem se bloqueia mesmo os cookies antes do consentimento — só confirma
+    que existe TEXTO desse tipo algures na página.
+
+    :param html: Conteúdo HTML da página.
+    :return: True se for encontrado texto sugestivo de um banner de consentimento, False caso contrário.
     """
     # Comentário:
     # Aqui tentamos detectar um banner de consentimento de cookies
@@ -243,13 +274,22 @@ def detect_consent_banner(html: str) -> bool:
 
 def build_site_data(html: str, page_url: str, final_url: str, language: str) -> SiteData:
     """
-    Build a SiteData instance from the given HTML and metadata.
+    Constrói um objeto SiteData completo a partir do HTML e metadados de uma página.
 
-    :param html: HTML content of the page.
-    :param page_url: Original page URL.
-    :param final_url: Final URL after redirects (for now, may be same as page_url).
-    :param language: Detected language code (e.g. "pt", "en").
-    :return: SiteData object populated with extracted data.
+    É a função "orquestradora" da extração: chama, por ordem, os extractores
+    de scripts de terceiros, formulários, link da política de privacidade e
+    deteção de banner de consentimento, e junta tudo num único SiteData.
+
+    Nota: os cookies aqui ficam sempre como lista vazia — os cookies REAIS
+    (capturados pelo Playwright antes de qualquer interação) são atribuídos
+    depois, em scraper/main.py, porque este módulo (extractor.py) só trabalha
+    sobre uma string de HTML e não tem acesso ao browser/contexto do Playwright.
+
+    :param html: Conteúdo HTML da página.
+    :param page_url: URL original pedido para a página.
+    :param final_url: URL final após eventuais redirecionamentos.
+    :param language: Código de idioma detetado (ex.: "pt", "en").
+    :return: Objeto SiteData preenchido com os dados extraídos do HTML.
     """
     # Comentário:
     # Esta função é o ponto central da extração: recebe o HTML e metadados,
@@ -261,7 +301,9 @@ def build_site_data(html: str, page_url: str, final_url: str, language: str) -> 
     consent_banner_detected = detect_consent_banner(html)
 
     # Comentário:
-    # Por enquanto, a lista de cookies fica vazia; será preenchida em fases seguintes.
+    # A lista de cookies fica vazia aqui de propósito — este módulo só vê
+    # HTML em texto, não tem acesso ao browser. Quem preenche os cookies
+    # reais é scraper/main.py, logo a seguir a esta chamada.
     cookies: List[Cookie] = []
 
     return SiteData(

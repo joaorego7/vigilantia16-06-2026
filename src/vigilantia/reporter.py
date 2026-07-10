@@ -20,6 +20,26 @@ def generate_html_report(
     total_cookies: int = 0,
     tracking_cookies: list = None
 ) -> str:
+    """
+    Gera o relatório final em HTML, a partir dos findings encontrados pelo
+    motor de regras e da informação sobre cookies pré-consentimento.
+
+    Passos:
+      1. Conta quantos findings existem por gravidade (high/medium/low).
+      2. Ordena os findings da maior para a menor gravidade, para que os
+         problemas mais graves apareçam primeiro no relatório.
+      3. Gera um ID curto de relatório e o timestamp de geração (úteis para
+         referenciar um scan específico, ex.: num relatório de estágio).
+      4. Carrega o template Jinja2 (templates/report.html.j2) e preenche-o
+         com todos os dados acima.
+
+    :param site_url: URL do site que foi analisado.
+    :param findings: Lista de não-conformidades encontradas (objetos Finding).
+    :param total_cookies: Número total de cookies encontrados antes do consentimento.
+    :param tracking_cookies: Lista dos cookies identificados como tracking/analytics
+        (pode ser None, nesse caso é tratada como lista vazia).
+    :return: String com o HTML completo do relatório, pronta a ser guardada em ficheiro.
+    """
     high = sum(1 for f in findings if f.severity == "high")
     medium = sum(1 for f in findings if f.severity == "medium")
     low = sum(1 for f in findings if f.severity == "low")

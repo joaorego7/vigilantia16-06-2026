@@ -8,6 +8,21 @@ from vigilantia.models.finding import Finding
 
 
 class RuleDefinition(BaseModel):
+    """
+    Representa UMA regra RGPD, tal como está definida no ficheiro
+    rules/gdpr_rules.yaml. Cada campo corresponde a uma chave do YAML.
+
+    Campos:
+      - id: identificador único da regra (ex.: "R05"). É esta string que liga
+        a definição (aqui, no YAML) à lógica de deteção (em evaluate_rules).
+      - name: nome curto da regra, em inglês por convenção neste ficheiro.
+      - description: explicação do problema que a regra deteta.
+      - check: descrição em texto livre da condição verificada (é só
+        documentação/legibilidade — não é código executado automaticamente).
+      - severity: gravidade da regra ("high", "medium" ou "low").
+      - article: artigo do RGPD relevante, para referência jurídica.
+      - recommendation: sugestão de correção, mostrada ao utilizador no relatório.
+    """
     id: str
     name: str
     description: str
@@ -18,10 +33,24 @@ class RuleDefinition(BaseModel):
 
 
 class RulesConfig(BaseModel):
+    """
+    Contentor simples que agrupa todas as RuleDefinition carregadas do YAML.
+    """
     rules: List[RuleDefinition]
 
 
 def load_rules_from_file(path: str) -> RulesConfig:
+    """
+    Lê o ficheiro YAML de regras (ex.: rules/gdpr_rules.yaml) e converte-o
+    num objeto RulesConfig validado pelo Pydantic.
+
+    Se o YAML tiver uma regra com um campo em falta ou de tipo errado, o
+    Pydantic levanta um erro de validação aqui mesmo, antes de a aplicação
+    tentar usar essa regra — o que evita erros mais confusos mais tarde.
+
+    :param path: Caminho para o ficheiro YAML de regras.
+    :return: Objeto RulesConfig com a lista de regras carregadas.
+    """
     with open(path, "r", encoding="utf-8") as f:
         raw_data = yaml.safe_load(f)
 
@@ -33,6 +62,30 @@ def evaluate_rules(
     rules_config: RulesConfig,
     policy_flags: Dict[str, bool],
 ) -> List[Finding]:
+    """
+    Função central do motor de regras: recebe os dados recolhidos do site
+    (SiteData), a configuração de regras carregada do YAML (RulesConfig) e
+    as "flags" resultantes da análise de texto da política de privacidade
+    (policy_flags — ex.: {"dpo_contact": True, "retention_period": False}),
+    e devolve a lista de não-conformidades (Finding) encontradas.
+
+    Cada bloco de código abaixo corresponde a UMA regra (R01, R02, ..., R11):
+    testa uma condição sobre site_data/policy_flags e, se a condição indicar
+    um problema, procura a definição correspondente em rules_config (pelo
+    "id") e cria um Finding com a severidade/descrição/recomendação vindas
+    do YAML. Se a regra não estiver definida no YAML (maybe_rule is None),
+    a condição é ignorada e nenhum finding é criado para essa regra — por
+    isso é importante manter o YAML e este ficheiro sincronizados (ver
+    comentário no topo de rules/gdpr_rules.yaml).
+
+    :param site_data: Dados estruturados do site, recolhidos pelo scraper
+        (cookies, scripts de terceiros, formulários, banner de consentimento, etc.).
+    :param rules_config: Configuração de regras carregada do YAML (ver load_rules_from_file).
+    :param policy_flags: Dicionário de flags sobre o conteúdo da política de
+        privacidade (devolvido por check_required_elements em privacy_text.py).
+        Fica vazio ({}) se não houver política de privacidade para analisar.
+    :return: Lista de objetos Finding, um por cada não-conformidade detetada.
+    """
 
     # Comentário:
     # 'findings' tem de ser inicializada aqui, ANTES de qualquer regra a usar.
@@ -369,6 +422,16 @@ def evaluate_rules(
     ]
 
     def _form_has_personal_data(form) -> bool:
+        """
+        Verifica se um formulário tem pelo menos um campo cujo nome sugira
+        que recolhe dados pessoais (ex.: um campo chamado "email" ou "telefone").
+
+        Comparação simples e case-insensitive: verifica se algum dos padrões
+        em personal_data_field_patterns aparece como substring do nome do campo.
+
+        :param form: Objeto Form (de site_data.forms) a analisar.
+        :return: True se pelo menos um campo do formulário parecer ser um dado pessoal.
+        """
         return any(
             pattern in (field or "").lower()
             for field in form.fields
