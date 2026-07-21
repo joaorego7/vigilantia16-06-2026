@@ -18,11 +18,20 @@ class FetchConfig(BaseModel):
     Configuração usada na operação de fetch (obtenção da página) com o Playwright.
 
     Campos:
-      - timeout_seconds: tempo máximo (em segundos) de espera pela página antes de desistir.
+      - timeout_seconds: tempo máximo (em segundos) de espera pelo carregamento
+        base da página (DOM pronto) antes de desistir. É o único timeout que,
+        se excedido, faz o fetch falhar.
+      - networkidle_grace_seconds: tempo extra (em segundos), best-effort, que
+        se dá à página depois do DOM carregado para tentar ficar em "network
+        idle" (0.5s sem pedidos de rede). Muitos sites com anúncios, analytics,
+        websockets ou widgets de chat NUNCA ficam network-idle — por isso este
+        valor é propositadamente curto e, se esgotar, NÃO faz o fetch falhar:
+        seguimos em frente com o HTML que já temos.
       - verify_tls: se True, valida certificados HTTPS normalmente; se False, ignora
         erros de certificado (útil para testar sites com certificados inválidos/autoassinados).
     """
-    timeout_seconds: int = 15
+    timeout_seconds: int = 20
+    networkidle_grace_seconds: int = 5
     verify_tls: bool = True
 
 class FetchResult(BaseModel):
@@ -55,10 +64,16 @@ def fetch_page(url: str, config: Optional[FetchConfig] = None) -> FetchResult:
     """
     Vai buscar o conteúdo HTML do URL indicado, usando o Playwright (browser headless).
 
-    Espera até a rede "acalmar" (networkidle) antes de ler o HTML, para garantir
-    que scripts assíncronos, chamadas a APIs e conteúdo carregado por JavaScript
-    já tiveram oportunidade de correr. Isto é importante para um scanner de RGPD,
-    porque muitos scripts de tracking só disparam depois do carregamento inicial.
+    Estratégia em duas fases:
+      1) Espera obrigatoriamente que o DOM esteja pronto ("domcontentloaded").
+         Se isto falhar/exceder o timeout, o fetch falha (ValueError).
+      2) Dá depois uma janela curta e best-effort para a rede "acalmar"
+         (networkidle), para dar hipótese a scripts assíncronos de tracking
+         de correrem. Se esta segunda espera exceder o timeout, NÃO falhamos
+         — seguimos com o HTML já obtido na fase 1. Isto evita que domínios
+         com anúncios/analytics/websockets em atividade contínua (que nunca
+         ficam "idle") bloqueiem indefinidamente e impeçam a geração de
+         relatório.
 
     :param url: URL do site a analisar (string).
     :param config: Configuração opcional (timeout, validação TLS). Se omitido,
@@ -91,12 +106,18 @@ def fetch_page(url: str, config: Optional[FetchConfig] = None) -> FetchResult:
                 )
             )
             page = context.new_page()
-            
-            # Navega para o URL e aguarda que o tráfego de rede acalme (networkidle)
+
+            # FASE 1 (obrigatória): navega para o URL e aguarda apenas que o DOM
+            # esteja pronto ("domcontentloaded"). Isto é rápido e fiável em
+            # praticamente qualquer site, ao contrário de "networkidle".
+            #
+            # Nota: o timeout é sempre em milissegundos na API do Playwright.
+            # Bug corrigido: multiplicava-se por 3000 em vez de 1000, o que
+            # inflacionava o timeout real (ex.: 15s configurados -> 45s reais).
             response = page.goto(
                 url,
-                timeout=config.timeout_seconds * 3000,
-                wait_until="networkidle"
+                timeout=config.timeout_seconds * 1000,
+                wait_until="domcontentloaded",
             )
             
             if response is None:
@@ -111,7 +132,32 @@ def fetch_page(url: str, config: Optional[FetchConfig] = None) -> FetchResult:
                 logger.warning("Non-success status code %s for URL %s", response.status, url)
                 browser.close()
                 raise ValueError(f"Failed to fetch {url}: HTTP {response.status}")
-            
+
+            # FASE 2 (best-effort, NÃO fatal): agora que já temos um DOM válido,
+            # damos à página uma janela curta de graça para tentar ficar
+            # "network idle", o que costuma significar que scripts assíncronos
+            # (trackers, widgets, chamadas a APIs) já correram.
+            #
+            # Bug corrigido: antes, esta espera por networkidle era a ÚNICA
+            # condição de sucesso e o timeout era fatal. Em domínios com
+            # anúncios, analytics, websockets ou chat widgets a rede nunca
+            # "acalma" — a página ficava sempre a demorar o timeout completo
+            # e o fetch falhava sempre, sem gerar relatório nenhum. Agora, se
+            # esta espera extra esgotar, apenas seguimos em frente com o HTML
+            # que já temos (que já inclui o DOM completo da fase 1).
+            try:
+                page.wait_for_load_state(
+                    "networkidle",
+                    timeout=config.networkidle_grace_seconds * 1000,
+                )
+            except PlaywrightTimeoutError:
+                logger.info(
+                    "Network idle nao atingido para %s dentro do periodo de "
+                    "graca (%ss); a prosseguir com o HTML ja carregado.",
+                    url,
+                    config.networkidle_grace_seconds,
+                )
+
             # Neste ponto a página carregou com sucesso: extraímos o HTML final
             # (já com JavaScript executado), o URL final (após redirecionamentos)
             # e os cookies presentes no contexto do browser neste preciso momento.
@@ -125,9 +171,17 @@ def fetch_page(url: str, config: Optional[FetchConfig] = None) -> FetchResult:
         # A página demorou mais do que timeout_seconds a responder/carregar.
         logger.error("Timeout error while fetching %s: %s", url, exc)
         raise ValueError(f"Timeout error while fetching {url}") from exc
+    except ValueError:
+        # Bug corrigido: estes são os ValueError que nós próprios lançamos acima
+        # (URL inválido, sem resposta, HTTP não-2xx). Antes, o "except Exception"
+        # abaixo apanhava-os também e reescrevia a mensagem para um genérico
+        # "Error while fetching {url}", escondendo a causa real (ex.: "HTTP 500")
+        # de quem consome esta função (CLI, logs). Aqui deixamo-los propagar tal
+        # como foram lançados, com a mensagem específica intacta.
+        raise
     except Exception as exc:
-        # Qualquer outro erro inesperado (rede em baixo, DNS não resolve, etc.)
-        # é convertido em ValueError para manter uma interface de erros consistente
-        # para quem chama esta função.
+        # Qualquer outro erro verdadeiramente inesperado (rede em baixo, DNS não
+        # resolve, etc.) é convertido em ValueError para manter uma interface de
+        # erros consistente para quem chama esta função.
         logger.error("Error while fetching %s: %s", url, exc)
         raise ValueError(f"Error while fetching {url}") from exc
