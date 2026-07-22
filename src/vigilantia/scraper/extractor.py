@@ -234,6 +234,89 @@ def extract_privacy_policy_url(html: str, page_url: str) -> Optional[str]:
     return None
 
 
+# Comentário:
+# Palavras-chave usadas para descobrir OUTRAS páginas legais/RGPD do mesmo
+# site (para além da política de privacidade principal), a partir do texto
+# visível de cada link. Cobrimos deliberadamente mais termos do que
+# extract_privacy_policy_url() acima, porque aqui o objetivo é encontrar
+# TODAS as páginas potencialmente relevantes (cookies, termos, contactos,
+# DPO/RGPD dedicados), não só a política principal.
+_RELATED_LEGAL_LINK_KEYWORDS = [
+    "privacidade", "privacy", "cookies", "termos", "terms",
+    "condições gerais", "condições de utilização", "terms and conditions",
+    "rgpd", "gdpr", "proteção de dados", "data protection",
+    "encarregado de proteção de dados", "data protection officer",
+    "contactos", "contact us",
+]
+
+
+def find_related_legal_links(
+    html: str,
+    page_url: str,
+    exclude_urls: Optional[set] = None,
+    max_links: int = 5,
+) -> List[str]:
+    """
+    Descobre, na página indicada, links para OUTRAS páginas legais/RGPD do
+    MESMO domínio (política de cookies separada, termos e condições,
+    contactos, página dedicada ao RGPD/DPO, etc.).
+
+    Usado para permitir uma análise "recursiva" limitada: em vez de
+    verificar só a página principal da política de privacidade, seguimos
+    também um pequeno número de páginas relacionadas, porque muitos sites
+    espalham a informação exigida pelo RGPD por várias páginas (ex.:
+    contacto do DPO só na página de "Contactos").
+
+    Deliberadamente NÃO é um crawler genérico: só segue links cujo TEXTO
+    visível sugira ser uma página legal/RGPD, fica sempre dentro do mesmo
+    domínio, e está limitado a max_links resultados — para não arriscar
+    percorrer o site inteiro (lento, e desnecessário para este objetivo).
+
+    :param html: Conteúdo HTML da página onde procurar os links.
+    :param page_url: URL da página atual (para resolver links relativos e
+        determinar o domínio "próprio").
+    :param exclude_urls: Conjunto de URLs a ignorar (já visitados/já
+        conhecidos), para evitar repetir páginas.
+    :param max_links: Número máximo de links novos a devolver.
+    :return: Lista de URLs absolutos, únicos, do mesmo domínio, ainda não
+        visitados, até ao limite de max_links.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    base_domain = _get_domain(page_url)
+    exclude_urls = exclude_urls or set()
+
+    found: List[str] = []
+    seen_in_this_page: set = set()
+
+    for link_tag in soup.find_all("a"):
+        href = link_tag.get("href")
+        if not href:
+            continue
+
+        text = (link_tag.get_text() or "").strip().lower()
+        if not any(keyword in text for keyword in _RELATED_LEGAL_LINK_KEYWORDS):
+            continue
+
+        absolute_url = urljoin(page_url, href)
+
+        # Só seguimos links dentro do mesmo domínio — um link de texto
+        # "Política de Privacidade" que aponte para outro site (ex.: a
+        # política da Google Analytics) não nos interessa aqui.
+        if _get_domain(absolute_url) != base_domain:
+            continue
+
+        if absolute_url in exclude_urls or absolute_url in seen_in_this_page:
+            continue
+
+        seen_in_this_page.add(absolute_url)
+        found.append(absolute_url)
+
+        if len(found) >= max_links:
+            break
+
+    return found
+
+
 def detect_consent_banner(html: str) -> bool:
     """
     Deteta se a página tem, aparentemente, um banner de consentimento de cookies.

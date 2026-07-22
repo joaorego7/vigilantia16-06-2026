@@ -1,17 +1,24 @@
 # src/vigilantia/analyzer/privacy_text.py
 
-from typing import Dict
+import logging
+from typing import Dict, List, Optional, Tuple
 
 import requests
 from bs4 import BeautifulSoup
 from langdetect import detect, LangDetectException
+
+from vigilantia.scraper.extractor import find_related_legal_links
+
+logger = logging.getLogger(__name__)
 
 # Comentário geral do módulo:
 # Este ficheiro trata da análise da política de privacidade:
 # - faz o download da página da política;
 # - extrai o texto simples (sem HTML);
 # - deteta o idioma do texto;
-# - verifica se a política menciona elementos obrigatórios do RGPD.
+# - verifica se a política menciona elementos obrigatórios do RGPD;
+# - (analyze_privacy_policy_multi_page) agrega a mesma análise ao longo de
+#   várias páginas legais relacionadas do mesmo site.
 
 
 def download_privacy_policy(url: str, timeout_seconds: int = 10) -> str:
@@ -23,9 +30,25 @@ def download_privacy_policy(url: str, timeout_seconds: int = 10) -> str:
     :return: Conteúdo HTML da página em formato string.
     :raises ValueError: Se houver erro de rede ou código HTTP não-sucedido.
     """
+    # Bug corrigido: sem cabeçalhos, o requests envia um User-Agent do tipo
+    # "python-requests/2.x", que muitos WAFs/proteções anti-bot (Cloudflare,
+    # Sucuri, etc.) bloqueiam automaticamente com HTTP 403 — mesmo que o
+    # mesmo site responda normalmente a um browser real. O fetcher.py já usa
+    # um User-Agent de browser via Playwright; usamos aqui o mesmo, para que
+    # o download da política tenha a mesma probabilidade de sucesso que o
+    # carregamento da página principal.
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/123.0 Safari/537.36"
+        ),
+        "Accept-Language": "pt-PT,pt;q=0.9,en;q=0.8",
+    }
+
     # Tenta fazer um pedido HTTP GET à URL indicada
     try:
-        response = requests.get(url, timeout=timeout_seconds)
+        response = requests.get(url, timeout=timeout_seconds, headers=headers)
     except requests.exceptions.RequestException as exc:
         # Se acontecer qualquer erro de rede (timeout, DNS, etc.), lança ValueError
         raise ValueError(f"Erro de rede ao descarregar a política de privacidade: {exc}") from exc
@@ -148,12 +171,30 @@ def check_required_elements(text: str, language: str) -> Dict[str, bool]:
             "transferir os seus dados",
         ],
         # Transferências internacionais de dados
+        #
+        # Bug corrigido: a lista original só apanhava terminologia jurídica
+        # genérica ("transferência internacional", "fora da UE"). Políticas
+        # reais muitas vezes não usam essa terminologia — simplesmente
+        # nomeiam o destino (ex.: "servidores da Google nos Estados
+        # Unidos"), o que é também uma transferência internacional à luz
+        # do RGPD (Art. 44-49), mas passava despercebido. Adicionamos
+        # menções diretas a destinos fora do EEE mais comuns em políticas
+        # de sites portugueses (EUA sendo o mais frequente, via serviços
+        # como Google/Meta/AWS/Microsoft).
         "international_transfers": [
             "transferência internacional",
             "transferências internacionais",
             "fora da união europeia",
             "transferência de dados para fora",
             "fora do espaço económico europeu",
+            "estados unidos",
+            "eua",
+            "e.u.a",
+            "país terceiro",
+            "países terceiros",
+            "cláusulas contratuais-tipo",
+            "cláusulas contratuais tipo",
+            "decisão de adequação",
         ],
         # Prazo de conservação dos dados
         "retention_period": [
@@ -229,6 +270,10 @@ def check_required_elements(text: str, language: str) -> Dict[str, bool]:
             "outside the european union",
             "outside the eea",
             "outside the eu",
+            "united states",
+            "third country",
+            "standard contractual clauses",
+            "adequacy decision",
         ],
         "retention_period": [
             "retention period",
@@ -269,3 +314,101 @@ def check_required_elements(text: str, language: str) -> Dict[str, bool]:
 
     # No fim, devolvemos o dicionário com todas as flags True/False
     return flags
+
+
+def analyze_privacy_policy_multi_page(
+    start_url: str,
+    max_pages: int = 5,
+    timeout_seconds: int = 10,
+) -> Tuple[Dict[str, bool], Dict[str, str], List[str]]:
+    """
+    Analisa a política de privacidade E outras páginas legais relacionadas
+    do mesmo site (cookies, termos, contactos, RGPD/DPO dedicado, etc.),
+    agregando os elementos RGPD encontrados em qualquer uma delas.
+
+    Motivação: muitos sites espalham a informação exigida pelo RGPD por
+    várias páginas em vez de a concentrarem toda numa única política (ex.:
+    o contacto do DPO só aparece na página de "Contactos", ou a política de
+    cookies está separada da política de privacidade). Analisar só a
+    página principal produzia falsos negativos nesses casos.
+
+    Estratégia (busca em largura, limitada, NÃO um crawler genérico):
+      1) Começa em start_url.
+      2) Para cada página analisada com sucesso, faz merge das flags com OR
+         (se o elemento for encontrado em QUALQUER página, fica True) e
+         guarda a URL onde foi encontrado pela primeira vez (evidence_urls).
+      3) Descobre novas páginas candidatas a partir dos links da própria
+         página (find_related_legal_links), só do mesmo domínio, só com
+         texto de link que sugira ser uma página legal/RGPD.
+      4) Para, o mais tardar, ao atingir max_pages páginas analisadas —
+         para nunca arriscar percorrer o site inteiro.
+
+    Se uma página individual falhar a descarregar (rede, 403, etc.), essa
+    página é simplemente ignorada e a análise continua com as restantes —
+    uma falha pontual não deve deitar fora o que já foi encontrado noutras
+    páginas.
+
+    :param start_url: URL da política de privacidade principal (ponto de partida).
+    :param max_pages: Número máximo de páginas a analisar no total.
+    :param timeout_seconds: Timeout HTTP por página.
+    :return: Tuplo (flags, evidence_urls, pages_analyzed):
+      - flags: Dict[str, bool] com o resultado agregado de todas as páginas.
+      - evidence_urls: Dict[str, str] com a URL onde cada flag True foi
+        primeiro encontrada (só inclui as flags True).
+      - pages_analyzed: lista de URLs efetivamente descarregadas com sucesso
+        (para transparência no relatório/CLI).
+    :raises ValueError: Se nem sequer a página inicial (start_url) puder ser
+        descarregada — nesse caso não há nada para agregar.
+    """
+    aggregated_flags: Dict[str, bool] = {}
+    evidence_urls: Dict[str, str] = {}
+    pages_analyzed: List[str] = []
+    visited: set = set()
+    queue: List[str] = [start_url]
+    first_page_failed_exc: Optional[ValueError] = None
+
+    while queue and len(pages_analyzed) < max_pages:
+        url = queue.pop(0)
+        if url in visited:
+            continue
+        visited.add(url)
+
+        try:
+            html = download_privacy_policy(url, timeout_seconds=timeout_seconds)
+        except ValueError as exc:
+            logger.info("Não foi possível analisar %s (a ignorar): %s", url, exc)
+            if url == start_url:
+                # Guardamos o erro da página inicial: se NENHUMA página do
+                # site for acessível, é isto que devolvemos ao chamador.
+                first_page_failed_exc = exc
+            continue
+
+        pages_analyzed.append(url)
+
+        text = extract_plain_text(html)
+        lang = detect_language(text)
+        page_flags = check_required_elements(text, language=lang)
+
+        for key, value in page_flags.items():
+            if value and not aggregated_flags.get(key, False):
+                aggregated_flags[key] = True
+                evidence_urls[key] = url
+            elif key not in aggregated_flags:
+                aggregated_flags[key] = False
+
+        if len(pages_analyzed) < max_pages:
+            related = find_related_legal_links(
+                html,
+                url,
+                exclude_urls=visited,
+                max_links=max_pages,
+            )
+            queue.extend(related)
+
+    if not pages_analyzed:
+        # Nem a página inicial nem nenhuma relacionada foi acessível.
+        raise first_page_failed_exc or ValueError(
+            f"Falha ao descarregar a política de privacidade: {start_url}"
+        )
+
+    return aggregated_flags, evidence_urls, pages_analyzed

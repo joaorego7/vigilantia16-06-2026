@@ -248,7 +248,7 @@ def evaluate_rules(
     # =========================
     # R06 - Política não menciona direito de acesso
     # =========================
-    if site_data.privacy_policy_url is not None:
+    if site_data.privacy_policy_url is not None and not policy_flags.get("_policy_unreachable", False):
         has_right_access = policy_flags.get("right_access", False)
 
         if not has_right_access:
@@ -277,7 +277,7 @@ def evaluate_rules(
     # =========================
     # R07 - Política não menciona direito ao apagamento
     # =========================
-    if site_data.privacy_policy_url is not None:
+    if site_data.privacy_policy_url is not None and not policy_flags.get("_policy_unreachable", False):
         has_right_erasure = policy_flags.get("right_erasure", False)
 
         if not has_right_erasure:
@@ -307,7 +307,7 @@ def evaluate_rules(
     # =========================
     # R08 - Política não menciona transferências internacionais
     # =========================
-    if site_data.privacy_policy_url is not None:
+    if site_data.privacy_policy_url is not None and not policy_flags.get("_policy_unreachable", False):
         has_international_transfers = policy_flags.get(
             "international_transfers",
             False,
@@ -340,7 +340,7 @@ def evaluate_rules(
     # =========================
     # R09 - Política não identifica o DPO quando obrigatório
     # =========================
-    if site_data.privacy_policy_url is not None:
+    if site_data.privacy_policy_url is not None and not policy_flags.get("_policy_unreachable", False):
         # Comentário (bug corrigido):
         # A chave usada aqui tinha de corresponder à chave devolvida por
         # check_required_elements() em privacy_text.py, que é "dpo_contact"
@@ -375,7 +375,7 @@ def evaluate_rules(
     # =========================
     # R10 - Política não indica prazo de conservação dos dados
     # =========================
-    if site_data.privacy_policy_url is not None:
+    if site_data.privacy_policy_url is not None and not policy_flags.get("_policy_unreachable", False):
         has_retention_period = policy_flags.get(
             "retention_period",
             False,
@@ -404,6 +404,43 @@ def evaluate_rules(
                     },
                 )
                 findings.append(finding)
+
+    # =========================
+    # R12 - Política de privacidade não pôde ser verificada
+    # =========================
+    # Comentário (bug corrigido): quando o download da política falha (ex.:
+    # HTTP 403 de um WAF, timeout de rede), policy_flags fica vazio e as
+    # regras R06-R10 disparavam TODAS por omissão, reportando "não
+    # conforme" para elementos que na verdade nunca foram lidos. Isto é
+    # sinalizado por policy_flags["_policy_unreachable"], definido em
+    # cli.py quando a exceção de download é apanhada. Aqui geramos, em vez
+    # disso, um único finding claro a dizer que é preciso verificação manual.
+    if site_data.privacy_policy_url is not None and policy_flags.get("_policy_unreachable", False):
+        maybe_rule = next(
+            (rule for rule in rules_config.rules if rule.id == "R12"),
+            None,
+        )
+
+        if maybe_rule is not None:
+            finding = Finding(
+                id=maybe_rule.id,
+                severity=maybe_rule.severity,
+                description=maybe_rule.description,
+                recommendation=maybe_rule.recommendation,
+                evidence={
+                    "message": (
+                        "Não foi possível descarregar/analisar automaticamente "
+                        "o conteúdo da política de privacidade (ex.: bloqueio "
+                        "por proteção anti-bot, timeout de rede). Os requisitos "
+                        "RGPD relacionados com o texto da política (direito de "
+                        "acesso, apagamento, transferências internacionais, DPO, "
+                        "prazo de conservação) não puderam ser verificados "
+                        "automaticamente e requerem revisão manual."
+                    ),
+                    "privacy_policy_url": str(site_data.privacy_policy_url),
+                },
+            )
+            findings.append(finding)
 
     # =========================
     # R11 - Formulários que recolhem dados pessoais sem aviso de finalidade

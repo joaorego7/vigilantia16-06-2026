@@ -119,8 +119,47 @@ def test_r03_does_not_raise_typeerror_on_httpurl():
 
 
 def test_all_rules_in_yaml_are_syntactically_loadable():
-    """Garante que o YAML de regras completo (R01-R11) carrega sem erros."""
+    """Garante que o YAML de regras completo (R01-R12) carrega sem erros."""
     rules_config = load_rules_from_file(str(RULES_FILE))
     rule_ids = {r.id for r in rules_config.rules}
-    expected_ids = {f"R{i:02d}" for i in range(1, 12)}
+    expected_ids = {f"R{i:02d}" for i in range(1, 13)}
     assert expected_ids.issubset(rule_ids)
+
+
+def test_policy_unreachable_suppresses_r06_to_r10_and_fires_r12():
+    """
+    Bug corrigido: quando o download da política de privacidade falha (ex.:
+    HTTP 403 de um WAF), policy_flags ficava vazio e as regras R06-R10
+    disparavam TODAS por omissão — reportando "política não conforme" para
+    conteúdo que nunca chegou a ser lido. Agora, com o sentinela
+    "_policy_unreachable", essas 5 regras não devem disparar, e deve
+    aparecer em vez disso um único finding R12 a pedir verificação manual.
+    """
+    site_data = _base_site_data()
+    rules_config = load_rules_from_file(str(RULES_FILE))
+
+    findings = evaluate_rules(
+        site_data,
+        rules_config,
+        policy_flags={"_policy_unreachable": True},
+    )
+    finding_ids = {f.id for f in findings}
+
+    assert "R12" in finding_ids
+    assert not {"R06", "R07", "R08", "R09", "R10"} & finding_ids
+
+
+def test_policy_reachable_still_evaluates_r06_to_r10_normally():
+    """
+    Garante que a correção anterior não desativa R06-R10 quando a política
+    FOI lida com sucesso: policy_flags sem o sentinela deve continuar a
+    disparar as regras normalmente quando os elementos RGPD faltam.
+    """
+    site_data = _base_site_data()
+    rules_config = load_rules_from_file(str(RULES_FILE))
+
+    findings = evaluate_rules(site_data, rules_config, policy_flags={})
+    finding_ids = {f.id for f in findings}
+
+    assert {"R06", "R07", "R08", "R09", "R10"}.issubset(finding_ids)
+    assert "R12" not in finding_ids

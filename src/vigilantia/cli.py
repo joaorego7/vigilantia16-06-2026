@@ -9,7 +9,7 @@ from pydantic import BaseModel, HttpUrl, ValidationError
 from vigilantia.scraper.main import build_site_data
 from vigilantia.scraper.cookie_tester import analyze_cookies
 from vigilantia.analyzer.privacy_text import (
-    download_privacy_policy,
+    analyze_privacy_policy_multi_page,
     extract_plain_text,
     detect_language,
     check_required_elements,
@@ -65,15 +65,37 @@ def run_scan(url: str) -> None:
         raise typer.Exit(code=1)
 
     # 2) Política de privacidade → flags (direitos RGPD mencionados no texto)
-    policy_flags = {}
+    #
+    # Bug corrigido: antes, uma falha de download deixava policy_flags={},
+    # e o motor de regras interpretava "flag ausente" como "elemento RGPD
+    # não mencionado", gerando 5 findings falsos (R06-R10). Agora marcamos
+    # explicitamente com "_policy_unreachable" quando NENHUMA página pôde
+    # ser lida, para o motor de regras gerar um único aviso (R12) em vez
+    # disso.
+    #
+    # Melhoria: em vez de analisar só a página da política principal,
+    # seguimos também um pequeno número de páginas legais relacionadas do
+    # mesmo site (cookies, termos, contactos, RGPD/DPO dedicado), porque
+    # muitos sites espalham a informação exigida pelo RGPD por várias
+    # páginas (ex.: contacto do DPO só na página de "Contactos").
+    policy_flags: dict = {}
+    policy_pages_analyzed: list = []
     if site_data.privacy_policy_url is not None:
         try:
-            policy_html = download_privacy_policy(str(site_data.privacy_policy_url))
-            policy_text = extract_plain_text(policy_html)
-            lang = detect_language(policy_text)
-            policy_flags = check_required_elements(policy_text, language=lang)
+            policy_flags, policy_evidence_urls, policy_pages_analyzed = (
+                analyze_privacy_policy_multi_page(str(site_data.privacy_policy_url))
+            )
+            if len(policy_pages_analyzed) > 1:
+                typer.echo(
+                    f"Política de privacidade analisada em {len(policy_pages_analyzed)} "
+                    f"páginas relacionadas do site:"
+                )
+                for page in policy_pages_analyzed:
+                    typer.echo(f"  - {page}")
+                typer.echo("")
         except ValueError as exc:
             typer.echo(f"Erro ao analisar política de privacidade: {exc}")
+            policy_flags = {"_policy_unreachable": True}
 
     # 3) Motor de regras → findings
     rules_config = load_rules_from_file(str(RULES_FILE))

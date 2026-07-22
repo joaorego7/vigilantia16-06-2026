@@ -97,3 +97,11 @@ rules:
     severity: "medium"
     article: "GDPR Art. 13"
     recommendation: "Add a short notice near each form explaining how the submitted data will be used, and link to the full privacy policy."
+
+  - id: R12
+    name: "Privacy policy could not be verified"
+    description: "The privacy policy page could not be downloaded or analyzed automatically (e.g. blocked by anti-bot protection, network timeout), so RGPD requirements about its text content could not be checked."
+    check: "policy_flags._policy_unreachable is True"
+    severity: "low"
+    article: "N/A - tooling limitation"
+    recommendation: "Manually review the privacy policy page for the required GDPR elements (right of access, erasure, international transfers, DPO contact, retention period)."
