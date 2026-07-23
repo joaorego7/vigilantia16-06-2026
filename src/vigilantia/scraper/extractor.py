@@ -76,6 +76,15 @@ def extract_third_party_scripts(html: str, page_url: str) -> List[ThirdPartyScri
     for script_tag in soup.find_all("script"):
         src = script_tag.get("src")
         if not src:
+            # Melhoria: Detetar trackers em scripts inline (ex: Google Tag Manager, Facebook Pixel)
+            content = (script_tag.string or "").lower()
+            if "google-analytics" in content or "gtag(" in content or "fbq(" in content or "datalayer" in content:
+                third_party_scripts.append(
+                    ThirdPartyScript(
+                        src="inline:tracking",
+                        category="analytics",
+                    )
+                )
             continue
 
         # Comentário:
@@ -136,10 +145,15 @@ def _has_nearby_privacy_notice(form_tag) -> bool:
     if _text_mentions_privacy_notice(form_tag.get_text(separator=" ")):
         return True
 
-    # Texto no elemento pai (comum ter uma frase introdutória antes do formulário).
+    # Melhoria: Procurar texto de privacidade nos pais até 3 níveis acima,
+    # para capturar avisos num container maior ou tooltip adjacente.
     parent = form_tag.parent
-    if parent is not None and _text_mentions_privacy_notice(parent.get_text(separator=" ")):
-        return True
+    levels = 0
+    while parent is not None and levels < 3:
+        if _text_mentions_privacy_notice(parent.get_text(separator=" ")):
+            return True
+        parent = parent.parent
+        levels += 1
 
     return False
 
@@ -350,6 +364,17 @@ def detect_consent_banner(html: str) -> bool:
             continue
         lower_text = text_node.lower()
         if any(keyword in lower_text for keyword in banner_keywords):
+            return True
+
+    # Melhoria: Detetar banners ocultos/iframes via classes/IDs de CMPs comuns
+    cmp_identifiers = [
+        "onetrust", "didomi", "quantcast", "cookiebot", "cookieadmin",
+        "cmp-banner", "cookie-banner", "cookieconsent", "qc-cmp2"
+    ]
+    for element in soup.find_all(["div", "section", "aside"]):
+        el_id = (element.get("id") or "").lower()
+        el_class = " ".join(element.get("class") or []).lower()
+        if any(cmp_id in el_id or cmp_id in el_class for cmp_id in cmp_identifiers):
             return True
 
     return False

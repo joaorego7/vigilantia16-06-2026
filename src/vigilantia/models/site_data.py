@@ -19,7 +19,7 @@ class Cookie(BaseModel):
 # Esta classe representa um script de terceiros carregado pelo site,
 # útil para identificar serviços de tracking e transferência de dados.
 class ThirdPartyScript(BaseModel):
-    src: HttpUrl       # endereço do script externo
+    src: str           # endereço do script externo (ou "inline" para scripts embebidos)
     category: str      # categoria (ex: "analytics", "advertising", "social")
 
 
