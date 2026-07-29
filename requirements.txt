@@ -6,3 +6,5 @@ pydantic==2.13.4
 PyYAML==6.0.3
 requests==2.34.2
 typer==0.26.8
+pyodbc==5.2.0
+python-dotenv==1.0.1
