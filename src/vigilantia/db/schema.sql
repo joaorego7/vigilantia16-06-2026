@@ -22,7 +22,7 @@ IF OBJECT_ID(N'dbo.Websites', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.Websites (
         WebsiteId     INT IDENTITY(1,1) NOT NULL,
-        Url           NVARCHAR(2083)    NOT NULL,
+        Url           NVARCHAR(850)     NOT NULL,
         Domain        NVARCHAR(255)     NOT NULL,
         CreatedAt     DATETIME2(0)      NOT NULL
             CONSTRAINT DF_Websites_CreatedAt DEFAULT SYSUTCDATETIME(),
