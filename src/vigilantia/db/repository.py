@@ -7,7 +7,13 @@ from abc import ABC
 from typing import Optional, Sequence
 from urllib.parse import urlparse
 
-import pyodbc
+try:
+    import pyodbc
+except ImportError:
+    from typing import Any
+    class _MockPyODBC:
+        Connection = Any
+    pyodbc = _MockPyODBC()
 
 from vigilantia.models.finding import Finding
 

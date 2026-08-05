@@ -6,7 +6,17 @@ import logging
 from contextlib import contextmanager
 from typing import Iterator, Optional
 
-import pyodbc
+try:
+    import pyodbc
+except ImportError:
+    class _PyODBCMock:
+        class Error(Exception):
+            pass
+        class Connection:
+            pass
+        def connect(self, *args, **kwargs):
+            raise self.Error("pyodbc não está instalado (faltam C++ Build Tools).")
+    pyodbc = _PyODBCMock()
 
 from vigilantia.db.config import DatabaseConfig
 
