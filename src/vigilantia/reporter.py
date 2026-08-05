@@ -2,7 +2,7 @@
 import hashlib
 from datetime import datetime
 from jinja2 import Environment, FileSystemLoader
-from typing import List
+from typing import List, Tuple
 
 from vigilantia.models.finding import Finding
 from vigilantia.paths import TEMPLATES_DIR
@@ -19,7 +19,7 @@ def generate_html_report(
     findings: List[Finding],
     total_cookies: int = 0,
     tracking_cookies: list = None
-) -> str:
+) -> Tuple[str, str]:
     """
     Gera o relatório final em HTML, a partir dos findings encontrados pelo
     motor de regras e da informação sobre cookies pré-consentimento.
@@ -38,7 +38,16 @@ def generate_html_report(
     :param total_cookies: Número total de cookies encontrados antes do consentimento.
     :param tracking_cookies: Lista dos cookies identificados como tracking/analytics
         (pode ser None, nesse caso é tratada como lista vazia).
-    :return: String com o HTML completo do relatório, pronta a ser guardada em ficheiro.
+    :return: Tuplo (html, report_id): o HTML completo do relatório, pronto a
+        ser guardado em ficheiro, e o ID curto (8 caracteres) gerado para
+        este relatório — usado pelo cli.py para gravar em
+        dbo.ScanRuns.ReportRef e assim cruzar o registo na BD com o
+        ficheiro HTML correspondente.
+
+        Bug corrigido (Semana 2): antes, o report_id era gerado aqui mas
+        nunca saía desta função — quem chamava só recebia o HTML, pelo que
+        não havia forma de ligar um ScanRun ao ficheiro de relatório que
+        realmente lhe corresponde.
     """
     high = sum(1 for f in findings if f.severity == "high")
     medium = sum(1 for f in findings if f.severity == "medium")
@@ -77,4 +86,4 @@ def generate_html_report(
             "Esta ferramenta é apenas um apoio técnico e não substitui uma auditoria jurídica profissional."
         ),
     )
-    return html
+    return html, report_id

@@ -4,6 +4,7 @@ from datetime import datetime
 from urllib.parse import urlparse
 
 import typer
+from dotenv import load_dotenv
 from pydantic import BaseModel, HttpUrl, ValidationError
 
 from vigilantia.scraper.main import build_site_data
@@ -17,8 +18,20 @@ from vigilantia.analyzer.privacy_text import (
 from vigilantia.analyzer.rule_engine import load_rules_from_file, evaluate_rules
 from vigilantia.reporter import generate_html_report
 from vigilantia.paths import RULES_FILE, REPORTS_DIR
+from vigilantia.db.connection import get_connection
+from vigilantia.db.repository import WebsiteRepository, ScanRunRepository, FindingRepository
 from collections import Counter
+from typing import Optional
 
+
+# Carrega o ficheiro .env (se existir) para os.environ, ANTES de qualquer
+# scan correr. Bug corrigido (Semana 2): python-dotenv já estava listado
+# em requirements.txt/pyproject.toml desde a Semana 1, mas load_dotenv()
+# nunca era chamado em lado nenhum — DatabaseConfig.from_env() lê
+# os.getenv() diretamente, pelo que sem esta chamada as variáveis
+# VIGILANTIA_DB_* do .env nunca chegavam a ser vistas pela aplicação
+# (só funcionava se estivessem exportadas manualmente na shell).
+load_dotenv()
 
 app = typer.Typer(help="Vigilantia - RGPD audit tool for websites (MVP).")
 
@@ -42,6 +55,101 @@ def _slugify_domain(url: str) -> str:
     return domain.replace(".", "_")
 
 
+def _persist_scan_start(url: str) -> Optional[int]:
+    """
+    Regista o início do scan na base de dados: garante que o Website
+    existe (get_or_create) e cria o registo de ScanRun com Status='Running'.
+
+    Comportamento fail-soft (decisão explícita para a Semana 2): se a
+    base de dados não estiver acessível (SQL Server em baixo, driver ODBC
+    em falta, credenciais erradas, etc.), esta função NUNCA interrompe o
+    scan — apenas avisa no terminal e devolve None. O resto de run_scan()
+    trata None como "sem persistência disponível para este scan" e
+    continua exatamente como se a base de dados não existisse, incluindo
+    a geração do relatório HTML. Esta escolha segue o mesmo espírito do
+    bug já corrigido no fetcher.py (networkidle best-effort): uma
+    dependência auxiliar não deve impedir a entrega do resultado principal.
+
+    :param url: URL do site a analisar, tal como recebido pelo CLI.
+    :return: ScanRunId (int) se o registo foi criado com sucesso, ou None
+        se a base de dados não estiver disponível.
+    """
+    try:
+        with get_connection() as conn:
+            website_id = WebsiteRepository(conn).get_or_create(url)
+            scan_run_id = ScanRunRepository(conn).start(website_id)
+            return scan_run_id
+    except Exception as exc:
+        typer.echo(
+            f"[BD] Aviso: não foi possível registar o início do scan na "
+            f"base de dados ({exc}). A continuar sem persistência.\n"
+        )
+        return None
+
+
+def _persist_scan_result(
+    scan_run_id: Optional[int],
+    findings: list,
+    report_id: str,
+) -> None:
+    """
+    Grava o resultado de um scan bem-sucedido na base de dados: um registo
+    dbo.Findings por cada não-conformidade encontrada, e marca o ScanRun
+    correspondente como concluído (Status='Completed'), associando o
+    report_id do relatório HTML gerado (ScanRuns.ReportRef).
+
+    Fail-soft: se scan_run_id for None (a fase inicial já falhou) ou se a
+    escrita falhar agora por qualquer motivo, apenas avisa e devolve —
+    nunca interrompe o fluxo do CLI, que já gerou o relatório HTML antes
+    de esta função ser chamada.
+
+    :param scan_run_id: ScanRunId devolvido por _persist_scan_start(), ou
+        None se a base de dados não estava disponível no início do scan.
+    :param findings: Lista de Finding encontrados pelo motor de regras.
+    :param report_id: ID curto do relatório HTML gerado por
+        generate_html_report(), para cruzar o ScanRun com o ficheiro.
+    """
+    if scan_run_id is None:
+        return
+
+    try:
+        with get_connection() as conn:
+            FindingRepository(conn).insert_many(scan_run_id, findings)
+            ScanRunRepository(conn).complete(scan_run_id, report_ref=report_id)
+    except Exception as exc:
+        typer.echo(
+            f"[BD] Aviso: não foi possível gravar os resultados do scan na "
+            f"base de dados ({exc}).\n"
+        )
+
+
+def _persist_scan_failure(scan_run_id: Optional[int], error_message: str) -> None:
+    """
+    Marca um ScanRun como falhado (Status='Failed') quando o scraper não
+    consegue sequer obter os dados do site (ver ValueError em run_scan()).
+
+    Fail-soft: se scan_run_id for None ou a própria escrita falhar, apenas
+    avisa — o erro original do scraper já foi mostrado ao utilizador antes
+    de chegarmos aqui.
+
+    :param scan_run_id: ScanRunId devolvido por _persist_scan_start(), ou
+        None se a base de dados não estava disponível.
+    :param error_message: Mensagem de erro do scraper, guardada em
+        ScanRuns.ErrorMessage para diagnóstico posterior.
+    """
+    if scan_run_id is None:
+        return
+
+    try:
+        with get_connection() as conn:
+            ScanRunRepository(conn).fail(scan_run_id, error_message)
+    except Exception as exc:
+        typer.echo(
+            f"[BD] Aviso: não foi possível registar a falha do scan na "
+            f"base de dados ({exc}).\n"
+        )
+
+
 def run_scan(url: str) -> None:
     """
     Executa a análise RGPD completa para o URL indicado:
@@ -57,11 +165,17 @@ def run_scan(url: str) -> None:
     """
     typer.echo(f"\nA iniciar análise RGPD para: {url}\n")
 
+    # 0) Regista o início do scan na base de dados (Website + ScanRun).
+    # Fail-soft: se a BD não estiver disponível, scan_run_id fica None e
+    # o resto do scan prossegue normalmente, só sem persistência.
+    scan_run_id = _persist_scan_start(url)
+
     # 1) Scraper → SiteData (scripts, formulários, cookies, política, banner)
     try:
         site_data = build_site_data(url)
     except ValueError as exc:
         typer.echo(f"Erro no scraper: {exc}")
+        _persist_scan_failure(scan_run_id, str(exc))
         raise typer.Exit(code=1)
 
     # 2) Política de privacidade → flags (direitos RGPD mencionados no texto)
@@ -142,7 +256,7 @@ def run_scan(url: str) -> None:
     typer.echo("")
 
     # 7) Geração do relatório HTML, com histórico por site + timestamp
-    html = generate_html_report(
+    html, report_id = generate_html_report(
         site_url=url,
         findings=findings,
         total_cookies=len(cookies),
@@ -161,6 +275,11 @@ def run_scan(url: str) -> None:
 
     typer.echo(f"[+] Relatório guardado em: {report_path}")
     typer.echo(f"[+] Última versão também disponível em: {latest_path}\n")
+
+    # 8) Grava os findings na base de dados e conclui o ScanRun.
+    # Fail-soft: corre DEPOIS do relatório já estar em disco, para que uma
+    # falha aqui nunca ponha em causa a entrega do relatório ao utilizador.
+    _persist_scan_result(scan_run_id, findings, report_id)
 
 
 @app.command()

@@ -1,8 +1,10 @@
 # tests/test_db_repository.py
 
+import json
 from unittest.mock import MagicMock
 
-from vigilantia.db.repository import WebsiteRepository, ScanRunRepository
+from vigilantia.db.repository import WebsiteRepository, ScanRunRepository, FindingRepository
+from vigilantia.models.finding import Finding
 
 
 def test_get_or_create_returns_existing_website_id():
@@ -76,3 +78,54 @@ def test_scan_run_fail_records_error_message():
     assert "Failed" in sql
     assert error_message == "Timeout ao carregar a página"
     assert scan_run_id == 101
+
+
+# =========================================================
+# FindingRepository (Semana 2 — Registo de Eventos)
+# =========================================================
+
+def _make_finding(rule_id="R09") -> Finding:
+    return Finding(
+        id=rule_id,
+        severity="low",
+        description="Texto da política não menciona o DPO.",
+        recommendation="Publicar os contactos do DPO.",
+        evidence={"message": "não encontrado", "flag": "dpo_contact"},
+    )
+
+
+def test_finding_repository_inserts_one_row_per_finding():
+    conn = MagicMock()
+    cursor = conn.cursor.return_value
+
+    findings = [_make_finding("R09"), _make_finding("R05")]
+    repo = FindingRepository(conn)
+    repo.insert_many(scan_run_id=101, findings=findings)
+
+    assert cursor.execute.call_count == 2
+
+    first_call_args = cursor.execute.call_args_list[0].args
+    sql, scan_run_id, rule_id, description, recommendation, evidence_json = first_call_args
+
+    assert "INSERT INTO dbo.Findings" in sql
+    assert scan_run_id == 101
+    assert rule_id == "R09"
+    assert description == "Texto da política não menciona o DPO."
+    assert recommendation == "Publicar os contactos do DPO."
+    # A evidência tem de ser gravada como JSON válido, não como dict cru
+    # (pyodbc não sabe serializar dicts Python diretamente).
+    assert json.loads(evidence_json) == {"message": "não encontrado", "flag": "dpo_contact"}
+
+
+def test_finding_repository_does_nothing_for_empty_list():
+    """
+    Quando o site não tem não-conformidades, não deve haver nenhum
+    round-trip à base de dados (evita esforço desnecessário).
+    """
+    conn = MagicMock()
+    cursor = conn.cursor.return_value
+
+    repo = FindingRepository(conn)
+    repo.insert_many(scan_run_id=101, findings=[])
+
+    cursor.execute.assert_not_called()

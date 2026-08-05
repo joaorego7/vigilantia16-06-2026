@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from abc import ABC
-from typing import Optional
+from typing import Optional, Sequence
 from urllib.parse import urlparse
 
 import pyodbc
+
+from vigilantia.models.finding import Finding
 
 # Comentário de cabeçalho:
 # Camada de acesso a dados (Repository pattern). Cada repositório recebe
@@ -115,3 +118,45 @@ class ScanRunRepository(BaseRepository):
             error_message,
             scan_run_id,
         )
+
+
+class FindingRepository(BaseRepository):
+    """
+    Repositório para a tabela dbo.Findings (Semana 2 — registo de eventos).
+
+    Nesta fase, cada Finding devolvido pelo motor de regras (rule_engine.py)
+    é gravado tal e qual — sem classificação de severidade adicional (já
+    vem do YAML, mas não é usada aqui) e sem deduplicação. Cada scan gera
+    sempre linhas novas, mesmo que o mesmo problema já tenha sido reportado
+    num scan anterior ao mesmo site; a deduplicação por Website+Evento
+    (UPSERT com LastSeen) fica para a Semana 3, quando também entra a
+    classificação automática por Categoria.
+    """
+
+    def insert_many(self, scan_run_id: int, findings: Sequence[Finding]) -> None:
+        """
+        Grava um registo em dbo.Findings por cada Finding da lista,
+        associado ao ScanRunId indicado.
+
+        :param scan_run_id: FK para dbo.ScanRuns — o scan que produziu
+            estes findings.
+        :param findings: Lista de Finding (modelo Pydantic já usado pelo
+            motor de regras e pelo relatório HTML).
+        """
+        if not findings:
+            # Nada a gravar; evita um round-trip à BD desnecessário quando
+            # o site não tem não-conformidades.
+            return
+
+        cursor = self._conn.cursor()
+        for finding in findings:
+            cursor.execute(
+                "INSERT INTO dbo.Findings "
+                "(ScanRunId, RuleId, Description, Recommendation, EvidenceJson, Status) "
+                "VALUES (?, ?, ?, ?, ?, N'Open')",
+                scan_run_id,
+                finding.id,
+                finding.description,
+                finding.recommendation,
+                json.dumps(finding.evidence, ensure_ascii=False),
+            )
