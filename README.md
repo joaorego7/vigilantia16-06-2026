@@ -102,6 +102,7 @@ O projeto usa um ficheiro `requirements.txt` para instalar as bibliotecas necess
 ```
 vigilantia16-06-2026/
 ├── run_vigilantia_mvp.py      # ponto de entrada interativo (pede URL por input)
+├── view_db.py                 # script para consultar a base de dados (websites e findings)
 ├── requirements.txt           # dependências do projeto
 ├── DISCLAIMER.md               # aviso legal sobre as limitações da ferramenta
 ├── rules/
@@ -115,6 +116,7 @@ vigilantia16-06-2026/
 │   ├── reporter.py              # geração do relatório HTML
 │   ├── scraper/                 # fetch (Playwright), extração de dados do HTML, teste de cookies
 │   ├── analyzer/                # motor de regras e análise de texto da política de privacidade
+│   ├── db/                      # acesso a dados (repositórios e schema SQL)
 │   └── models/                  # modelos de dados (Pydantic)
 ├── tests/                      # suite de testes automáticos (pytest)
 └── .github/workflows/ci.yml    # CI: corre os testes em cada push/PR
