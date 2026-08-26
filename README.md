@@ -48,6 +48,12 @@ python .\configurar_db.py
 ```
 Este comando criará ou atualizará o ficheiro `.env` na raiz do projeto com os parâmetros escolhidos.
 
+As tabelas são `Websites`, `ScanRuns`, `Findings` e `Companies` (esta última só é preenchida
+quando o scan é iniciado pelos dados de uma empresa — ver "Modo por dados da empresa").
+Em SQLite (o modo por omissão, `VIGILANTIA_DB_TYPE=sqlite`) as tabelas são criadas
+automaticamente na primeira ligação, incluindo em bases de dados criadas antes de a tabela
+`Companies` existir.
+
 ### Consultar Dados no SSMS (SQL Server Management Studio)
 
 Para além de usar o comando `python .\view_db.py` para visualizar os dados unificados no terminal, pode utilizar o script SQL pré-configurado **[`report_search.sql`](file:///c:/Users/Joao%20Rego/Desktop/vigilantia16-06-2026-original/report_search.sql)**.
@@ -83,6 +89,51 @@ vigilantia https://example.com
 ```
 (equivalente a `python -m vigilantia.cli https://example.com`, caso o comando `vigilantia`
 não fique disponível no PATH)
+
+### Modo por dados da empresa (sem saber o URL)
+
+Se não souber o site da empresa, pode passar os dados da empresa em JSON em vez do URL.
+A ferramenta descobre o site oficial (pesquisa web + registo público Racius + WHOIS, em
+`src/vigilantia/scraper/company_info.py`), mostra o que encontrou, e só depois corre a
+análise RGPD normal sobre esse site:
+
+```powershell
+vigilantia '{"company_name": "Feedzai", "country": "Portugal"}'
+```
+
+Campos aceites: `company_name` (obrigatório), `legal_name`, `country` e `address`
+(opcionais, mas melhoram bastante a precisão da pesquisa e da validação no Racius).
+
+No PowerShell, envolva o JSON em aspas simples. Para nomes com carateres especiais é mais
+seguro usar uma variável:
+
+```powershell
+$json = '{"company_name": "Ageas Portugal", "legal_name": "Ageas Portugal - Companhia de Seguros, S.A.", "country": "Portugal"}'
+vigilantia $json
+```
+
+**Confiança na identificação do site.** Antes de analisar, a ferramenta avalia o quanto
+confia no site que encontrou:
+
+| Situação | Comportamento |
+|---|---|
+| Nenhum site encontrado | Cancela (código de saída 1). O `--force` não ajuda: não há URL nenhum. |
+| Confiança `low` | Cancela, para não auditar o site errado. Sugere acrescentar `legal_name`/`address`, ou repetir com `--force`. |
+| Confiança `medium` | Avisa e continua, sem precisar de `--force`. |
+| Confiança `high` | Continua (mensagem apenas informativa). |
+| NIF/morada não confirmados no Racius | Nunca cancela — é sobre a fiabilidade dos dados, não sobre a identidade do site. O aviso vai também para o relatório. |
+
+```powershell
+vigilantia '{"company_name": "Consultores"}' --force
+```
+
+O `--force` só tem efeito neste modo; num scan por URL é ignorado.
+
+**O que muda no resultado.** Quando o scan arranca pelos dados da empresa, o relatório HTML
+passa a abrir com uma secção *Dados da empresa* (nome, NIF, morada, nameservers e se os
+dados foram confirmados no registo público), e esses dados ficam também guardados na tabela
+`Companies` da base de dados. Um scan normal por URL continua exatamente como antes: sem
+essa secção e sem registo na `Companies`.
 
 ## Relatórios gerados
 
@@ -130,9 +181,10 @@ vigilantia16-06-2026/
 │   ├── cli.py                   # ponto de entrada por linha de comandos + lógica partilhada
 │   ├── paths.py                 # caminhos absolutos do projeto (regras, templates, relatórios)
 │   ├── reporter.py              # geração do relatório HTML
-│   ├── scraper/                 # fetch (Playwright), extração de dados do HTML, teste de cookies
+│   ├── scraper/                 # fetch (Playwright), extração de dados do HTML, teste de cookies,
+│   │                            # e descoberta do site a partir dos dados da empresa (company_info.py)
 │   ├── analyzer/                # motor de regras e análise de texto da política de privacidade
-│   ├── db/                      # acesso a dados (repositórios e schema SQL)
+│   ├── db/                      # acesso a dados (Websites, ScanRuns, Findings, Companies)
 │   └── models/                  # modelos de dados (Pydantic)
 ├── tests/                      # suite de testes automáticos (pytest)
 └── .github/workflows/ci.yml    # CI: corre os testes em cada push/PR

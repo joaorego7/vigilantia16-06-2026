@@ -115,3 +115,45 @@ BEGIN
     CREATE NONCLUSTERED INDEX IX_Findings_RuleId ON dbo.Findings (RuleId);
 END
 GO
+
+-- =========================================================
+-- Companies: dados da empresa dona de um Website, quando o
+-- scan foi iniciado a partir dos dados da empresa em vez de
+-- um URL (ver company_info.py e o comando `scan` no cli.py).
+--
+-- Um Website tem no máximo uma empresa (UNIQUE em WebsiteId):
+-- cada novo scan da mesma empresa atualiza a linha existente
+-- em vez de acumular duplicados. Os dados são informativos —
+-- não entram na avaliação das regras RGPD.
+--
+-- RegistryVerified segue a semântica do company_info:
+--   1 = NIF/morada confirmados no registo público (Racius)
+--   0 = obtidos mas NÃO confirmados (podem ser de outra empresa)
+--   NULL = registo público não consultado
+-- =========================================================
+IF OBJECT_ID(N'dbo.Companies', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.Companies (
+        CompanyId        INT IDENTITY(1,1) NOT NULL,
+        WebsiteId        INT               NOT NULL,
+        Name             NVARCHAR(255)     NOT NULL,   -- nome comercial pesquisado
+        LegalName        NVARCHAR(255)     NULL,
+        Nif              NVARCHAR(20)      NULL,
+        Address          NVARCHAR(500)     NULL,
+        RegistryVerified BIT               NULL,
+        Note             NVARCHAR(MAX)     NULL,       -- origem/fiabilidade dos dados
+        NameserversJson  NVARCHAR(MAX)     NULL,       -- lista de nameservers em JSON
+        CreatedAt        DATETIME2(0)      NOT NULL
+            CONSTRAINT DF_Companies_CreatedAt DEFAULT SYSUTCDATETIME(),
+        UpdatedAt        DATETIME2(0)      NOT NULL
+            CONSTRAINT DF_Companies_UpdatedAt DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT PK_Companies PRIMARY KEY CLUSTERED (CompanyId),
+        CONSTRAINT FK_Companies_Websites FOREIGN KEY (WebsiteId)
+            REFERENCES dbo.Websites (WebsiteId),
+        CONSTRAINT UQ_Companies_WebsiteId UNIQUE (WebsiteId)
+    );
+
+    -- Consulta típica: "que site corresponde a este NIF".
+    CREATE NONCLUSTERED INDEX IX_Companies_Nif ON dbo.Companies (Nif);
+END
+GO

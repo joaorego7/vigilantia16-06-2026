@@ -62,10 +62,26 @@ CREATE TABLE IF NOT EXISTS Findings (
     FOREIGN KEY(ScanRunId) REFERENCES ScanRuns(ScanRunId)
 );
 
+CREATE TABLE IF NOT EXISTS Companies (
+    CompanyId INTEGER PRIMARY KEY AUTOINCREMENT,
+    WebsiteId INTEGER NOT NULL UNIQUE,
+    Name TEXT NOT NULL,
+    LegalName TEXT NULL,
+    Nif TEXT NULL,
+    Address TEXT NULL,
+    RegistryVerified INTEGER NULL,
+    Note TEXT NULL,
+    NameserversJson TEXT NULL,
+    CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UpdatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(WebsiteId) REFERENCES Websites(WebsiteId)
+);
+
 CREATE INDEX IF NOT EXISTS IX_Websites_Domain ON Websites (Domain);
 CREATE INDEX IF NOT EXISTS IX_ScanRuns_WebsiteId_StartedAt ON ScanRuns (WebsiteId, StartedAt DESC);
 CREATE INDEX IF NOT EXISTS IX_Findings_ScanRunId ON Findings (ScanRunId);
 CREATE INDEX IF NOT EXISTS IX_Findings_RuleId ON Findings (RuleId);
+CREATE INDEX IF NOT EXISTS IX_Companies_Nif ON Companies (Nif);
 """
 
 
@@ -99,18 +115,17 @@ def get_connection(
             logger.error("Falha ao abrir ligação SQLite %s: %s", db_file, exc)
             raise
 
-        # Auto-migração: cria tabelas se não existirem
+        # Auto-migração: o script só tem CREATE TABLE/INDEX IF NOT EXISTS, por
+        # isso pode correr sempre. Antes só corria quando a tabela Websites não
+        # existia, o que deixava as bases de dados já criadas sem as tabelas
+        # acrescentadas depois (ex.: Companies).
         try:
-            cursor = conn.cursor()
-            cursor.execute("SELECT 1 FROM Websites LIMIT 1")
-        except sqlite3.OperationalError:
-            try:
-                conn.executescript(SQLITE_SCHEMA)
-                conn.commit()
-            except Exception as exc:
-                logger.error("Falha ao inicializar o esquema SQLite: %s", exc)
-                conn.close()
-                raise
+            conn.executescript(SQLITE_SCHEMA)
+            conn.commit()
+        except Exception as exc:
+            logger.error("Falha ao inicializar o esquema SQLite: %s", exc)
+            conn.close()
+            raise
 
         try:
             yield conn

@@ -45,3 +45,17 @@ class SiteData(BaseModel):
     forms: List[Form]                  # formulários encontrados na página
     privacy_policy_url: Optional[HttpUrl] = None # link para a política de privacidade
     consent_banner_detected: bool      # indica se foi detetado um banner de consentimento
+
+    # --- Dados da empresa (opcionais) ---
+    #
+    # Preenchidos apenas quando o scan é iniciado a partir dos dados de uma
+    # empresa (ver vigilantia/scraper/company_info.py e o comando `scan` em
+    # cli.py). Num scan normal por URL ficam todos a None / lista vazia, pelo
+    # que nada muda para quem já usava o SiteData. São apenas informativos:
+    # o motor de regras RGPD não os lê nem os avalia.
+    company_legal_name: Optional[str] = None          # nome legal completo da empresa
+    company_nif: Optional[str] = None                 # NIF / número de contribuinte
+    company_address: Optional[str] = None             # morada da sede
+    company_registry_verified: Optional[bool] = None  # dados confirmados no registo público (Racius)?
+    company_note: Optional[str] = None                # nota sobre a origem/fiabilidade dos dados
+    company_nameservers: List[str] = []               # nameservers do domínio (WHOIS)

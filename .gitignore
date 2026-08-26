@@ -29,3 +29,14 @@ htmlcov/
 # IDEs
 .vscode/
 .idea/
+
+# Scripts locais de preparação/validação do ambiente (não fazem parte do projeto)
+setup_teste.ps1
+testar_integracao.ps1
+
+# Artefactos gerados ao correr scans e testes
+resultado_teste.txt
+relatorio_empresa.html
+relatorio_url.html
+*.db.bak
+*.log
