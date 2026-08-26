@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Relatório RGPD — https://www.jn.pt</title>
+  <title>Relatório RGPD — https://www.citeforma.pt</title>
   <style>
     :root {
       --ink: #1C2541;
@@ -328,9 +328,9 @@
         <p class="eyebrow letterhead-sub">Relatório de Não-Conformidade RGPD</p>
       </div>
       <div class="letterhead-meta">
-        <div><span class="label">Site</span>https://www.jn.pt</div>
-        <div><span class="label">Data</span>26/08/2026 10:34</div>
-        <div><span class="label">Ref.</span>63b2232f</div>
+        <div><span class="label">Site</span>https://www.citeforma.pt</div>
+        <div><span class="label">Data</span>26/08/2026 10:18</div>
+        <div><span class="label">Ref.</span>b7a3c557</div>
       </div>
     </div>
   </header>
@@ -344,11 +344,11 @@
         <div class="tally-label eyebrow">Graves</div>
       </div>
       <div class="tally-card medium">
-        <div class="tally-number">6</div>
+        <div class="tally-number">2</div>
         <div class="tally-label eyebrow">Médios</div>
       </div>
       <div class="tally-card low">
-        <div class="tally-number">0</div>
+        <div class="tally-number">1</div>
         <div class="tally-label eyebrow">Baixos</div>
       </div>
     </div>
@@ -408,30 +408,6 @@
         <article class="finding medium">
           <div class="finding-head">
             <h3 class="finding-title">
-              <span class="rule-id mono">R03</span>
-              A Google Analytics / gtag.js script was detected without IP anonymization enabled.
-            </h3>
-            <span class="stamp medium">
-              Médio
-              
-            </span>
-          </div>
-
-          <p class="recommendation">
-            <span class="rec-label">Recomendação</span>Enable IP anonymization (anonymize_ip) in the analytics configuration, or use a privacy-friendly analytics tool.
-          </p>
-
-          <div class="evidence mono">
-            <span class="evidence-label">Evidência</span>
-            
-              Foi detetado Google Analytics sem anonimização de IP.
-            
-          </div>
-        </article>
-      
-        <article class="finding medium">
-          <div class="finding-head">
-            <h3 class="finding-title">
               <span class="rule-id mono">R04</span>
               One or more cookies are missing the Secure and/or HttpOnly attributes.
             </h3>
@@ -456,8 +432,8 @@
         <article class="finding medium">
           <div class="finding-head">
             <h3 class="finding-title">
-              <span class="rule-id mono">R06</span>
-              The privacy policy text does not mention the data subject's right of access.
+              <span class="rule-id mono">R11</span>
+              A form collects personal data (e.g. e-mail, phone, address) without a privacy notice near it explaining the purpose of processing.
             </h3>
             <span class="stamp medium">
               Médio
@@ -466,85 +442,37 @@
           </div>
 
           <p class="recommendation">
-            <span class="rec-label">Recomendação</span>Explicitly describe how users can request access to their personal data.
+            <span class="rec-label">Recomendação</span>Add a short notice near each form explaining how the submitted data will be used, and link to the full privacy policy.
           </p>
 
           <div class="evidence mono">
             <span class="evidence-label">Evidência</span>
             
-              Texto da política de privacidade analisado não contém referência ao direito de acesso aos dados.
+              Foram encontrados formulários que recolhem dados pessoais sem qualquer aviso de privacidade próximo.
             
           </div>
         </article>
       
-        <article class="finding medium">
+        <article class="finding low">
           <div class="finding-head">
             <h3 class="finding-title">
-              <span class="rule-id mono">R07</span>
-              The privacy policy text does not mention the right to erasure ('right to be forgotten').
+              <span class="rule-id mono">R12</span>
+              The privacy policy page could not be downloaded or analyzed automatically (e.g. blocked by anti-bot protection, network timeout), so RGPD requirements about its text content could not be checked.
             </h3>
-            <span class="stamp medium">
-              Médio
+            <span class="stamp low">
+              Baixo
               
             </span>
           </div>
 
           <p class="recommendation">
-            <span class="rec-label">Recomendação</span>Explicitly describe how users can request deletion of their personal data.
+            <span class="rec-label">Recomendação</span>Manually review the privacy policy page for the required GDPR elements (right of access, erasure, international transfers, DPO contact, retention period).
           </p>
 
           <div class="evidence mono">
             <span class="evidence-label">Evidência</span>
             
-              Texto da política de privacidade analisado não contém referência ao direito ao apagamento / direito a ser esquecido.
-            
-          </div>
-        </article>
-      
-        <article class="finding medium">
-          <div class="finding-head">
-            <h3 class="finding-title">
-              <span class="rule-id mono">R08</span>
-              The privacy policy text does not mention international data transfers outside the EU/EEA.
-            </h3>
-            <span class="stamp medium">
-              Médio
-              
-            </span>
-          </div>
-
-          <p class="recommendation">
-            <span class="rec-label">Recomendação</span>If personal data is transferred outside the EU/EEA, disclose the legal safeguards used (e.g. SCCs, adequacy decisions).
-          </p>
-
-          <div class="evidence mono">
-            <span class="evidence-label">Evidência</span>
-            
-              Texto da política de privacidade analisado não contém referência a transferências internacionais de dados.
-            
-          </div>
-        </article>
-      
-        <article class="finding medium">
-          <div class="finding-head">
-            <h3 class="finding-title">
-              <span class="rule-id mono">R10</span>
-              The privacy policy text does not specify how long personal data is kept.
-            </h3>
-            <span class="stamp medium">
-              Médio
-              
-            </span>
-          </div>
-
-          <p class="recommendation">
-            <span class="rec-label">Recomendação</span>State a clear retention period (or the criteria used to determine it) for each category of personal data.
-          </p>
-
-          <div class="evidence mono">
-            <span class="evidence-label">Evidência</span>
-            
-              Texto da política de privacidade analisado não indica qualquer prazo de conservação dos dados pessoais.
+              Não foi possível descarregar/analisar automaticamente o conteúdo da política de privacidade (ex.: bloqueio por proteção anti-bot, timeout de rede). Os requisitos RGPD relacionados com o texto da política (direito de acesso, apagamento, transferências internacionais, DPO, prazo de conservação) não puderam ser verificados automaticamente e requerem revisão manual.
             
           </div>
         </article>
@@ -552,19 +480,15 @@
     
 
     <h2 class="section-title"><span class="index">Anexo A</span> Teste de cookies pré-consentimento</h2>
-    <p>Foram encontrados <strong>16</strong> cookies instalados antes de qualquer interação de consentimento.</p>
+    <p>Foram encontrados <strong>2</strong> cookies instalados antes de qualquer interação de consentimento.</p>
 
     
       <div class="alert-banner">
-        <strong>Atenção:</strong> foram detetados 3 cookies de tracking/analytics antes do consentimento — possível violação do Art. 6.º/7.º do RGPD.
+        <strong>Atenção:</strong> foram detetados 1 cookies de tracking/analytics antes do consentimento — possível violação do Art. 6.º/7.º do RGPD.
       </div>
       <ul class="cookie-list">
         
-          <li>_ga — .jn.pt</li>
-        
-          <li>_ga_81QEE7X258 — .jn.pt</li>
-        
-          <li>_ga_N841P0RMZF — .jn.pt</li>
+          <li>_GRECAPTCHA — www.google.com</li>
         
       </ul>
     

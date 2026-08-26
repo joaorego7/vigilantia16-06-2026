@@ -180,7 +180,7 @@ def test_connection_string(driver, server, database, trusted, user, password, tr
         return None, str(e)
 
 
-def execute_sql_file(conn, file_path):
+def execute_sql_file(conn, file_path, database_name):
     """Executa um ficheiro SQL dividindo-o por blocos 'GO'."""
     if not os.path.exists(file_path):
         print(f"Ficheiro de schema não encontrado em: {file_path}")
@@ -188,6 +188,11 @@ def execute_sql_file(conn, file_path):
         
     with open(file_path, "r", encoding="utf-8") as f:
         content = f.read()
+        
+    # Substituir o nome da base de dados hardcoded "Vigilantia" pelo nome real escolhido
+    content = content.replace("CREATE DATABASE Vigilantia", f"CREATE DATABASE [{database_name}]")
+    content = content.replace("USE Vigilantia", f"USE [{database_name}]")
+    content = content.replace("DB_ID(N'Vigilantia')", f"DB_ID(N'{database_name}')")
         
     # SQL Server GO é um comando especial de batch. Temos de dividir as instruções por GO
     # nas linhas em que aparece sozinho.
@@ -327,7 +332,7 @@ def main():
             
         if init_schema:
             schema_path = os.path.join("src", "vigilantia", "db", "schema.sql")
-            execute_sql_file(conn, schema_path)
+            execute_sql_file(conn, schema_path, database)
             
         conn.close()
         
