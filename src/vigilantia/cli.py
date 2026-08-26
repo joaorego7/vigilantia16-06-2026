@@ -20,6 +20,7 @@ from vigilantia.reporter import generate_html_report
 from vigilantia.paths import RULES_FILE, REPORTS_DIR
 from vigilantia.db.connection import get_connection
 from vigilantia.db.repository import WebsiteRepository, ScanRunRepository, FindingRepository
+from vigilantia.db.dashboard import report_findings_to_dashboard
 from collections import Counter
 from typing import Optional
 
@@ -147,6 +148,20 @@ def _persist_scan_failure(scan_run_id: Optional[int], error_message: str) -> Non
         typer.echo(
             f"[BD] Aviso: não foi possível registar a falha do scan na "
             f"base de dados ({exc}).\n"
+        )
+
+
+def _report_to_dashboard(url: str, findings: list) -> None:
+    """
+    Reporta as não-conformidades encontradas para o dashboard de incidências (MSSQL remoto).
+    Comportamento fail-soft: se o dashboard remoto falhar, avisa no terminal e continua.
+    """
+    try:
+        report_findings_to_dashboard(url, findings)
+    except Exception as exc:
+        typer.echo(
+            f"[DASHBOARD] Aviso: não foi possível enviar os dados para o "
+            f"dashboard remoto ({exc}).\n"
         )
 
 
@@ -280,6 +295,10 @@ def run_scan(url: str) -> None:
     # Fail-soft: corre DEPOIS do relatório já estar em disco, para que uma
     # falha aqui nunca ponha em causa a entrega do relatório ao utilizador.
     _persist_scan_result(scan_run_id, findings, report_id)
+
+    # 9) Envia as não-conformidades para o dashboard de incidências (MSSQL remoto).
+    # Fail-soft: falhas no dashboard não impedem o fim do scan.
+    _report_to_dashboard(url, findings)
 
 
 @app.command()
