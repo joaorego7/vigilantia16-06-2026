@@ -38,6 +38,16 @@ O modo interativo (`run_vigilantia_mvp.py`) funciona sem este passo.
 pip install -e .
 ```
 
+### Configuração da Base de Dados (Recomendado)
+
+Antes de correr a ferramenta, pode configurar a ligação à base de dados SQL Server de forma interativa e sem alterar diretamente os ficheiros de código. O script `configurar_db.py` deteta os drivers ODBC disponíveis no seu sistema, solicita as credenciais, testa a ligação e permite criar a base de dados e as tabelas (a partir do ficheiro `schema.sql`) de forma automatizada.
+
+Para iniciar a configuração, execute:
+```powershell
+python .\configurar_db.py
+```
+Este comando criará ou atualizará o ficheiro `.env` na raiz do projeto com os parâmetros escolhidos.
+
 ## Execução
 
 Existem dois pontos de entrada equivalentes (ambos correm a mesma lógica):
