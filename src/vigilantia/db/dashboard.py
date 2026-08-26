@@ -60,23 +60,23 @@ def _map_category(rule_id: str) -> str:
 def _map_level(severity: str) -> int:
     """
     Mapeia a severidade de string para o nível inteiro esperado pela SP.
-    - 'high' -> 3
-    - 'medium' -> 2
-    - 'low' -> 1
+    Conforme definido pelo Geada:
+    - 'high'   -> 1 (crítico)
+    - 'medium' -> 2 (médio)
+    - 'low'    -> 3 (recomendação)
     """
     sev = (severity or "").lower()
     if sev == "high":
-        return 3
+        return 1
     elif sev == "medium":
         return 2
-    return 1
+    return 3
 
 
 def _format_exec_sql(
     client_id: int,
     device_id: int,
     remote_address: str,
-    device_name: str,
     category: str,
     level: int,
     description: str,
@@ -88,11 +88,10 @@ def _format_exec_sql(
         f"    @ClientId = {client_id},\n"
         f"    @DeviceId = {device_id},\n"
         f"    @RemoteAddress = N'{remote_address}',\n"
-        f"    @DeviceName = N'{device_name}',\n"
+        f"    @DeviceName = NULL,\n"
         f"    @Category = N'{category}',\n"
         f"    @NotificationId = N'{category}',\n"
         f"    @Level = {level},\n"
-        f"    @LogTimestamp = NULL,\n"
         f"    @Description = N'{description}',\n"
         f"    @Type = N'{audit_type}'"
     )
@@ -123,11 +122,10 @@ def report_findings_to_dashboard(
 
     # Pré-calcula campos que são iguais para todos os findings do mesmo scan
     parsed = urlparse(url)
-    # @RemoteAddress: URL base com esquema e trailing slash (ex: "https://pcm.pt/")
+    # @RemoteAddress: URL base com esquema, sem trailing slash (ex: "https://pcm.pt")
     hostname = parsed.hostname or "unknown"
-    remote_address = f"{parsed.scheme}://{hostname}/"[:50]
-    # @DeviceName: domínio legível no dashboard (ex: "pcm.pt")
-    device_name = hostname[:200]
+    remote_address = f"{parsed.scheme}://{hostname}"[:50]
+    # @DeviceName: NULL — a SP usa o @RemoteAddress como fallback
 
     # ── Modo Dry-Run ──────────────────────────────────────────────
     if cfg.dry_run:
@@ -140,7 +138,7 @@ def report_findings_to_dashboard(
             description = f"{url} — {finding.description}"
             sql = _format_exec_sql(
                 cfg.client_id, cfg.device_id, remote_address,
-                device_name, category, level, description, cfg.audit_type,
+                category, level, description, cfg.audit_type,
             )
             print(f"\n-- Finding {i}/{len(findings)} (Rule: {finding.id}, Severity: {finding.severity})")
             print(sql)
@@ -162,14 +160,14 @@ def report_findings_to_dashboard(
             description = f"{url} — {finding.description}"
 
             # Executa a SP com parâmetros posicionais no padrão do SQL Server via pyodbc
-            # @LogTimestamp = NULL para usar GETDATE() no servidor
+            # @DeviceName = NULL (SP faz fallback para @RemoteAddress)
             # @Category = @NotificationId (mesmo valor, conforme padrão do dashboard)
             cursor.execute(
                 "EXEC [service].[create_notification] ?, ?, ?, ?, ?, ?, ?, ?, ?, ?",
                 cfg.client_id,
                 cfg.device_id,
                 remote_address,
-                device_name,
+                None,           # @DeviceName = NULL (fallback para RemoteAddress)
                 category,
                 category,       # @NotificationId = @Category
                 level,
