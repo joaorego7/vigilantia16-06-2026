@@ -48,6 +48,12 @@ python .\configurar_db.py
 ```
 Este comando criará ou atualizará o ficheiro `.env` na raiz do projeto com os parâmetros escolhidos.
 
+### Consultar Dados no SSMS (SQL Server Management Studio)
+
+Para além de usar o comando `python .\view_db.py` para visualizar os dados unificados no terminal, pode utilizar o script SQL pré-configurado **[`report_search.sql`](file:///c:/Users/Joao%20Rego/Desktop/vigilantia16-06-2026-original/report_search.sql)**.
+
+Basta abrir este ficheiro no SSMS, certificar-se de que o comando `USE` aponta para a base de dados correta que configurou no assistente (ex: `clientes_websites`), e executar o script (pressionando **F5**) para obter um relatório completo e unificado de todos os scans e findings correlacionados numa única tabela.
+
 ## Execução
 
 Existem dois pontos de entrada equivalentes (ambos correm a mesma lógica):
