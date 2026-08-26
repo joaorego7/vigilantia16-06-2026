@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Relatório RGPD — http://www.consultores.com/</title>
+  <title>Relatório RGPD — https://www.feedzai.com/</title>
   <style>
     :root {
       --ink: #1C2541;
@@ -360,9 +360,9 @@
         <p class="eyebrow letterhead-sub">Relatório de Não-Conformidade RGPD</p>
       </div>
       <div class="letterhead-meta">
-        <div><span class="label">Site</span>http://www.consultores.com/</div>
-        <div><span class="label">Data</span>26/08/2026 19:52</div>
-        <div><span class="label">Ref.</span>361ffb37</div>
+        <div><span class="label">Site</span>https://www.feedzai.com/</div>
+        <div><span class="label">Data</span>26/08/2026 19:50</div>
+        <div><span class="label">Ref.</span>634ae6d6</div>
       </div>
     </div>
   </header>
@@ -375,45 +375,41 @@
     <dl class="company-facts">
       
       <dt>Nome legal</dt>
-      <dd><strong>Consultores</strong></dd>
+      <dd><strong>Feedzai</strong></dd>
       
       
       <dt>Site</dt>
-      <dd>http://www.consultores.com/</dd>
+      <dd>https://www.feedzai.com/</dd>
       
       
       <dt>Domínio</dt>
-      <dd class="mono">consultores.com</dd>
+      <dd class="mono">feedzai.com</dd>
       
       
       
       
       <dt>Nameservers</dt>
-      <dd class="mono">ns1-06.azure-dns.com, ns2-06.azure-dns.net, ns3-06.azure-dns.org, ns4-06.azure-dns.info</dd>
+      <dd class="mono">mary.ns.cloudflare.com, pablo.ns.cloudflare.com</dd>
       
       <dt>Registo público</dt>
       <dd>
         
-          Dados <strong>não confirmados</strong> no Racius.com
+          Registo público não consultado
         
       </dd>
     </dl>
 
-    
-      <div class="alert-banner">
-        <strong>Atenção:</strong> Dados de nif, postal_code e address não foram confirmados automaticamente (podem existir subsidiárias ou empresas com nome semelhante) — validar manualmente antes de usar.
-      </div>
     
     
 
     <h2 class="section-title"><span class="index">01</span> Resumo por gravidade</h2>
     <div class="tally-row">
       <div class="tally-card high">
-        <div class="tally-number">1</div>
+        <div class="tally-number">0</div>
         <div class="tally-label eyebrow">Graves</div>
       </div>
       <div class="tally-card medium">
-        <div class="tally-number">0</div>
+        <div class="tally-number">3</div>
         <div class="tally-label eyebrow">Médios</div>
       </div>
       <div class="tally-card low">
@@ -426,26 +422,74 @@
 
     
       
-        <article class="finding high">
+        <article class="finding medium">
           <div class="finding-head">
             <h3 class="finding-title">
-              <span class="rule-id mono">R05</span>
-              The privacy policy is missing or not linked from the main page.
+              <span class="rule-id mono">R04</span>
+              One or more cookies are missing the Secure and/or HttpOnly attributes.
             </h3>
-            <span class="stamp high">
-              Alto
+            <span class="stamp medium">
+              Médio
               
             </span>
           </div>
 
           <p class="recommendation">
-            <span class="rec-label">Recomendação</span>Add a clear link to the privacy policy in the footer of all pages.
+            <span class="rec-label">Recomendação</span>Set the Secure and HttpOnly flags on all cookies that do not need to be read by client-side JavaScript.
           </p>
 
           <div class="evidence mono">
             <span class="evidence-label">Evidência</span>
             
-              Não foi encontrado qualquer link para política de privacidade na página analisada.
+              Foram encontrados cookies sem atributos Secure/HttpOnly adequados.
+            
+          </div>
+        </article>
+      
+        <article class="finding medium">
+          <div class="finding-head">
+            <h3 class="finding-title">
+              <span class="rule-id mono">R06</span>
+              The privacy policy text does not mention the data subject's right of access.
+            </h3>
+            <span class="stamp medium">
+              Médio
+              
+            </span>
+          </div>
+
+          <p class="recommendation">
+            <span class="rec-label">Recomendação</span>Explicitly describe how users can request access to their personal data.
+          </p>
+
+          <div class="evidence mono">
+            <span class="evidence-label">Evidência</span>
+            
+              Texto da política de privacidade analisado não contém referência ao direito de acesso aos dados.
+            
+          </div>
+        </article>
+      
+        <article class="finding medium">
+          <div class="finding-head">
+            <h3 class="finding-title">
+              <span class="rule-id mono">R07</span>
+              The privacy policy text does not mention the right to erasure ('right to be forgotten').
+            </h3>
+            <span class="stamp medium">
+              Médio
+              
+            </span>
+          </div>
+
+          <p class="recommendation">
+            <span class="rec-label">Recomendação</span>Explicitly describe how users can request deletion of their personal data.
+          </p>
+
+          <div class="evidence mono">
+            <span class="evidence-label">Evidência</span>
+            
+              Texto da política de privacidade analisado não contém referência ao direito ao apagamento / direito a ser esquecido.
             
           </div>
         </article>
@@ -453,7 +497,7 @@
     
 
     <h2 class="section-title"><span class="index">Anexo A</span> Teste de cookies pré-consentimento</h2>
-    <p>Foram encontrados <strong>0</strong> cookies instalados antes de qualquer interação de consentimento.</p>
+    <p>Foram encontrados <strong>6</strong> cookies instalados antes de qualquer interação de consentimento.</p>
 
     
       <div class="ok-banner">

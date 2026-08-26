@@ -146,6 +146,37 @@
       color: var(--ink-soft);
     }
 
+    /* ---------- Ficha da empresa ---------- */
+    .company-facts {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-top: 3px solid var(--ink-soft);
+      padding: 1.1rem 1.3rem;
+      margin: 1rem 0 0;
+      display: grid;
+      grid-template-columns: max-content 1fr;
+      gap: 0.45rem 1.4rem;
+      font-size: 0.95rem;
+    }
+
+    .company-facts dt {
+      font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+      font-size: 0.68rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--ink-soft);
+      padding-top: 0.2rem;
+    }
+
+    .company-facts dd { margin: 0; }
+
+    .company-note {
+      margin-top: 0.8rem;
+      font-size: 0.85rem;
+      font-style: italic;
+      color: var(--ink-soft);
+    }
+
     /* ---------- Findings ---------- */
     .finding {
       background: var(--panel);
@@ -308,6 +339,7 @@
 
     @media (max-width: 640px) {
       .tally-row { grid-template-columns: 1fr; }
+      .company-facts { grid-template-columns: 1fr; gap: 0.15rem 0; }
       .letterhead-inner { flex-direction: column; align-items: flex-start; }
       .letterhead-meta { text-align: left; }
       .finding-head { flex-direction: column; }
@@ -336,6 +368,57 @@
   </header>
 
   <main>
+
+    {# Secção condicional: só aparece quando o scan arrancou a partir dos dados
+       de uma empresa (comando `scan` com JSON, ver GetCompanyUrl). Num scan
+       normal por URL todos estes campos vêm vazios e o bloco é omitido. #}
+    {% if company_legal_name or company_nif or company_address or company_nameservers %}
+    <h2 class="section-title"><span class="index">00</span> Dados da empresa</h2>
+    <dl class="company-facts">
+      {% if company_legal_name %}
+      <dt>Nome legal</dt>
+      <dd><strong>{{ company_legal_name }}</strong></dd>
+      {% endif %}
+      {% if company_site %}
+      <dt>Site</dt>
+      <dd>{{ company_site }}</dd>
+      {% endif %}
+      {% if company_domain %}
+      <dt>Domínio</dt>
+      <dd class="mono">{{ company_domain }}</dd>
+      {% endif %}
+      {% if company_nif %}
+      <dt>NIF</dt>
+      <dd class="mono">{{ company_nif }}</dd>
+      {% endif %}
+      {% if company_address %}
+      <dt>Morada</dt>
+      <dd>{{ company_address }}</dd>
+      {% endif %}
+      {% if company_nameservers %}
+      <dt>Nameservers</dt>
+      <dd class="mono">{{ company_nameservers | join(', ') }}</dd>
+      {% endif %}
+      <dt>Registo público</dt>
+      <dd>
+        {% if company_registry_verified is sameas true %}
+          Dados confirmados no Racius.com
+        {% elif company_registry_verified is sameas false %}
+          Dados <strong>não confirmados</strong> no Racius.com
+        {% else %}
+          Registo público não consultado
+        {% endif %}
+      </dd>
+    </dl>
+
+    {% if company_registry_verified is sameas false and company_note %}
+      <div class="alert-banner">
+        <strong>Atenção:</strong> {{ company_note }}
+      </div>
+    {% elif company_note %}
+      <p class="company-note">{{ company_note }}</p>
+    {% endif %}
+    {% endif %}
 
     <h2 class="section-title"><span class="index">01</span> Resumo por gravidade</h2>
     <div class="tally-row">

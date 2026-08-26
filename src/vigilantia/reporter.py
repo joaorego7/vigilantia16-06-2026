@@ -1,10 +1,12 @@
 # src/vigilantia/reporter.py
 import hashlib
 from datetime import datetime
+from urllib.parse import urlparse
 from jinja2 import Environment, FileSystemLoader
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from vigilantia.models.finding import Finding
+from vigilantia.models.site_data import SiteData
 from vigilantia.paths import TEMPLATES_DIR
 
 # Comentário:
@@ -14,11 +16,25 @@ from vigilantia.paths import TEMPLATES_DIR
 _SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2}
 
 
+def _dominio(url: str) -> str:
+    """
+    Extrai o domínio de um URL, sem o "www." — a mesma noção de domínio
+    usada pelo company_info (e a que corresponde aos nameservers do WHOIS).
+
+    :param url: URL completo do site analisado.
+    :return: Domínio limpo (ex.: "feedzai.com"), ou string vazia se o URL
+        não tiver hostname.
+    """
+    hostname = urlparse(url).hostname or ""
+    return hostname[4:] if hostname.startswith("www.") else hostname
+
+
 def generate_html_report(
     site_url: str, 
     findings: List[Finding],
     total_cookies: int = 0,
-    tracking_cookies: list = None
+    tracking_cookies: list = None,
+    site_data: Optional[SiteData] = None,
 ) -> Tuple[str, str]:
     """
     Gera o relatório final em HTML, a partir dos findings encontrados pelo
@@ -38,6 +54,11 @@ def generate_html_report(
     :param total_cookies: Número total de cookies encontrados antes do consentimento.
     :param tracking_cookies: Lista dos cookies identificados como tracking/analytics
         (pode ser None, nesse caso é tratada como lista vazia).
+    :param site_data: SiteData do scan (opcional). Só é usado para ler os campos
+        company_* — preenchidos quando o scan arrancou a partir dos dados de uma
+        empresa (ver company_info) — e mostrar a secção "Dados da empresa" no
+        relatório. Se for None (ou se os campos estiverem vazios, como acontece
+        num scan normal por URL), essa secção simplesmente não aparece.
     :return: Tuplo (html, report_id): o HTML completo do relatório, pronto a
         ser guardado em ficheiro, e o ID curto (8 caracteres) gerado para
         este relatório — usado pelo cli.py para gravar em
@@ -82,6 +103,17 @@ def generate_html_report(
         tracking_cookies=tracking_cookies or [],
         report_id=report_id,
         generated_at=generated_at.strftime("%d/%m/%Y %H:%M"),
+        # Dados da empresa (só preenchidos quando o scan veio do company_info).
+        # O site e o domínio saem do próprio SiteData — é o site que acabou
+        # por ser analisado, ou seja, o que o company_info resolveu.
+        company_site=str(site_data.url) if site_data else None,
+        company_domain=(_dominio(str(site_data.url)) if site_data else None),
+        company_legal_name=site_data.company_legal_name if site_data else None,
+        company_nif=site_data.company_nif if site_data else None,
+        company_address=site_data.company_address if site_data else None,
+        company_registry_verified=site_data.company_registry_verified if site_data else None,
+        company_note=site_data.company_note if site_data else None,
+        company_nameservers=site_data.company_nameservers if site_data else [],
         legal_disclaimer=(
             "Esta ferramenta é apenas um apoio técnico e não substitui uma auditoria jurídica profissional."
         ),

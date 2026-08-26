@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Relatório RGPD — http://www.consultores.com/</title>
+  <title>Relatório RGPD — https://www.ageas.pt/particulares/</title>
   <style>
     :root {
       --ink: #1C2541;
@@ -360,9 +360,9 @@
         <p class="eyebrow letterhead-sub">Relatório de Não-Conformidade RGPD</p>
       </div>
       <div class="letterhead-meta">
-        <div><span class="label">Site</span>http://www.consultores.com/</div>
-        <div><span class="label">Data</span>26/08/2026 19:52</div>
-        <div><span class="label">Ref.</span>361ffb37</div>
+        <div><span class="label">Site</span>https://www.ageas.pt/particulares/</div>
+        <div><span class="label">Data</span>26/08/2026 19:12</div>
+        <div><span class="label">Ref.</span>f99acf2e</div>
       </div>
     </div>
   </header>
@@ -375,45 +375,33 @@
     <dl class="company-facts">
       
       <dt>Nome legal</dt>
-      <dd><strong>Consultores</strong></dd>
-      
-      
-      <dt>Site</dt>
-      <dd>http://www.consultores.com/</dd>
-      
-      
-      <dt>Domínio</dt>
-      <dd class="mono">consultores.com</dd>
+      <dd><strong>Ageas Portugal - Companhia de Seguros, S.A.</strong></dd>
       
       
       
       
       <dt>Nameservers</dt>
-      <dd class="mono">ns1-06.azure-dns.com, ns2-06.azure-dns.net, ns3-06.azure-dns.org, ns4-06.azure-dns.info</dd>
+      <dd class="mono">ns1.ageas.pt, ns2.ageas.pt</dd>
       
       <dt>Registo público</dt>
       <dd>
         
-          Dados <strong>não confirmados</strong> no Racius.com
+          Registo público não consultado
         
       </dd>
     </dl>
 
-    
-      <div class="alert-banner">
-        <strong>Atenção:</strong> Dados de nif, postal_code e address não foram confirmados automaticamente (podem existir subsidiárias ou empresas com nome semelhante) — validar manualmente antes de usar.
-      </div>
     
     
 
     <h2 class="section-title"><span class="index">01</span> Resumo por gravidade</h2>
     <div class="tally-row">
       <div class="tally-card high">
-        <div class="tally-number">1</div>
+        <div class="tally-number">0</div>
         <div class="tally-label eyebrow">Graves</div>
       </div>
       <div class="tally-card medium">
-        <div class="tally-number">0</div>
+        <div class="tally-number">4</div>
         <div class="tally-label eyebrow">Médios</div>
       </div>
       <div class="tally-card low">
@@ -426,26 +414,98 @@
 
     
       
-        <article class="finding high">
+        <article class="finding medium">
           <div class="finding-head">
             <h3 class="finding-title">
-              <span class="rule-id mono">R05</span>
-              The privacy policy is missing or not linked from the main page.
+              <span class="rule-id mono">R03</span>
+              A Google Analytics / gtag.js script was detected without IP anonymization enabled.
             </h3>
-            <span class="stamp high">
-              Alto
+            <span class="stamp medium">
+              Médio
               
             </span>
           </div>
 
           <p class="recommendation">
-            <span class="rec-label">Recomendação</span>Add a clear link to the privacy policy in the footer of all pages.
+            <span class="rec-label">Recomendação</span>Enable IP anonymization (anonymize_ip) in the analytics configuration, or use a privacy-friendly analytics tool.
           </p>
 
           <div class="evidence mono">
             <span class="evidence-label">Evidência</span>
             
-              Não foi encontrado qualquer link para política de privacidade na página analisada.
+              Foi detetado Google Analytics sem anonimização de IP.
+            
+          </div>
+        </article>
+      
+        <article class="finding medium">
+          <div class="finding-head">
+            <h3 class="finding-title">
+              <span class="rule-id mono">R03</span>
+              A Google Analytics / gtag.js script was detected without IP anonymization enabled.
+            </h3>
+            <span class="stamp medium">
+              Médio
+              
+            </span>
+          </div>
+
+          <p class="recommendation">
+            <span class="rec-label">Recomendação</span>Enable IP anonymization (anonymize_ip) in the analytics configuration, or use a privacy-friendly analytics tool.
+          </p>
+
+          <div class="evidence mono">
+            <span class="evidence-label">Evidência</span>
+            
+              Foi detetado Google Analytics sem anonimização de IP.
+            
+          </div>
+        </article>
+      
+        <article class="finding medium">
+          <div class="finding-head">
+            <h3 class="finding-title">
+              <span class="rule-id mono">R04</span>
+              One or more cookies are missing the Secure and/or HttpOnly attributes.
+            </h3>
+            <span class="stamp medium">
+              Médio
+              
+            </span>
+          </div>
+
+          <p class="recommendation">
+            <span class="rec-label">Recomendação</span>Set the Secure and HttpOnly flags on all cookies that do not need to be read by client-side JavaScript.
+          </p>
+
+          <div class="evidence mono">
+            <span class="evidence-label">Evidência</span>
+            
+              Foram encontrados cookies sem atributos Secure/HttpOnly adequados.
+            
+          </div>
+        </article>
+      
+        <article class="finding medium">
+          <div class="finding-head">
+            <h3 class="finding-title">
+              <span class="rule-id mono">R11</span>
+              A form collects personal data (e.g. e-mail, phone, address) without a privacy notice near it explaining the purpose of processing.
+            </h3>
+            <span class="stamp medium">
+              Médio
+              
+            </span>
+          </div>
+
+          <p class="recommendation">
+            <span class="rec-label">Recomendação</span>Add a short notice near each form explaining how the submitted data will be used, and link to the full privacy policy.
+          </p>
+
+          <div class="evidence mono">
+            <span class="evidence-label">Evidência</span>
+            
+              Foram encontrados formulários que recolhem dados pessoais sem qualquer aviso de privacidade próximo.
             
           </div>
         </article>
@@ -453,12 +513,17 @@
     
 
     <h2 class="section-title"><span class="index">Anexo A</span> Teste de cookies pré-consentimento</h2>
-    <p>Foram encontrados <strong>0</strong> cookies instalados antes de qualquer interação de consentimento.</p>
+    <p>Foram encontrados <strong>5</strong> cookies instalados antes de qualquer interação de consentimento.</p>
 
     
-      <div class="ok-banner">
-        Não foram detetados cookies de tracking óbvios antes do consentimento.
+      <div class="alert-banner">
+        <strong>Atenção:</strong> foram detetados 1 cookies de tracking/analytics antes do consentimento — possível violação do Art. 6.º/7.º do RGPD.
       </div>
+      <ul class="cookie-list">
+        
+          <li>_fbp — .ageas.pt</li>
+        
+      </ul>
     
 
   </main>

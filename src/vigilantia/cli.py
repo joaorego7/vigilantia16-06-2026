@@ -1,5 +1,6 @@
 # src/vigilantia/cli.py
 
+import json
 from datetime import datetime
 from urllib.parse import urlparse
 
@@ -19,7 +20,12 @@ from vigilantia.analyzer.rule_engine import load_rules_from_file, evaluate_rules
 from vigilantia.reporter import generate_html_report
 from vigilantia.paths import RULES_FILE, REPORTS_DIR
 from vigilantia.db.connection import get_connection
-from vigilantia.db.repository import WebsiteRepository, ScanRunRepository, FindingRepository
+from vigilantia.db.repository import (
+    WebsiteRepository,
+    ScanRunRepository,
+    FindingRepository,
+    CompanyRepository,
+)
 from vigilantia.db.dashboard import report_findings_to_dashboard
 from collections import Counter
 from typing import Optional
@@ -151,6 +157,49 @@ def _persist_scan_failure(scan_run_id: Optional[int], error_message: str) -> Non
         )
 
 
+def _persist_company(url: str, company_result: Optional[dict]) -> None:
+    """
+    Grava na base de dados os dados da empresa dona do site (tabela Companies,
+    um registo por Website), quando o scan arrancou a partir dos dados de uma
+    empresa em vez de um URL. Num scan normal por URL não há nada a gravar e a
+    função devolve logo.
+
+    Fail-soft, como o resto da persistência: se a base de dados não estiver
+    disponível, avisa no terminal e devolve — o relatório já está em disco e
+    já contém estes dados.
+
+    :param url: URL analisado, usado para encontrar/criar o Website.
+    :param company_result: Resultado de get_company_urls(), ou None.
+    """
+    if not company_result:
+        return
+
+    name = (
+        _clean_company_value(company_result.get("company_name"))
+        or _clean_company_value(company_result.get("legal_name"))
+        or url
+    )
+
+    try:
+        with get_connection() as conn:
+            website_id = WebsiteRepository(conn).get_or_create(url)
+            CompanyRepository(conn).upsert(
+                website_id,
+                name=name,
+                legal_name=_clean_company_value(company_result.get("legal_name")),
+                nif=_clean_company_value(company_result.get("nif")),
+                address=_clean_company_value(company_result.get("address")),
+                registry_verified=company_result.get("registry_verified"),
+                note=_clean_company_value(company_result.get("note")),
+                nameservers=_company_nameservers(company_result),
+            )
+    except Exception as exc:
+        typer.echo(
+            f"[BD] Aviso: não foi possível gravar os dados da empresa na "
+            f"base de dados ({exc}).\n"
+        )
+
+
 def _report_to_dashboard(url: str, findings: list) -> None:
     """
     Reporta as não-conformidades encontradas para o dashboard de incidências (MSSQL remoto).
@@ -165,7 +214,244 @@ def _report_to_dashboard(url: str, findings: list) -> None:
         )
 
 
-def run_scan(url: str) -> None:
+# ---------------------------------------------------------------------------
+# Integração com a descoberta do site a partir dos dados da empresa
+#
+# O motor já existe no projeto, em vigilantia/scraper/company_info.py, e é
+# consumido aqui tal como está: este ficheiro não é alterado pela integração,
+# e a dependência é só num sentido — o cli conhece o company_info, o
+# company_info não sabe nada sobre a análise RGPD.
+#
+# O import é feito dentro da função, e não no topo do módulo, para que um
+# problema neste componente opcional (ficheiro removido, dependência em
+# falta) nunca impeça o `vigilantia scan <url>` normal de funcionar.
+# ---------------------------------------------------------------------------
+
+
+def _load_get_company_urls():
+    """
+    Importa a função get_company_urls() de vigilantia/scraper/company_info.py.
+
+    :return: A função get_company_urls.
+    :raises typer.Exit: código 1, com mensagem clara, se o import falhar.
+    """
+    try:
+        from vigilantia.scraper.company_info import get_company_urls
+        return get_company_urls
+    except ImportError as exc:
+        typer.echo(
+            "[ERRO] Não foi possível carregar o módulo de descoberta do site da "
+            f"empresa (vigilantia/scraper/company_info.py): {exc}"
+        )
+        raise typer.Exit(code=1)
+
+
+def _clean_company_value(value):
+    """
+    Normaliza um valor devolvido pelo get_company_urls().
+
+    O motor usa a string "not available" para assinalar "não encontrado" —
+    útil no output JSON do script standalone, mas não é algo que se queira
+    ver impresso num relatório. Convertemos esses casos (e strings vazias)
+    para None, para que o template simplesmente omita o campo.
+
+    :param value: Valor tal como veio do resultado de get_company_urls().
+    :return: O valor original, ou None se não houver informação útil.
+    """
+    if value is None:
+        return None
+    if isinstance(value, str) and value.strip().lower() in ("", "not available"):
+        return None
+    return value
+
+
+def _echo_company_resolution(result: dict) -> None:
+    """
+    Mostra no terminal o resumo da resolução do site (company_info),
+    antes de a análise RGPD arrancar, para o utilizador poder confirmar que
+    está prestes a auditar o site certo.
+
+    :param result: Dicionário devolvido por get_company_urls().
+    """
+    typer.echo("=== Resolução do site a partir dos dados da empresa ===")
+    typer.echo(f"Empresa: {_clean_company_value(result.get('company_name')) or '(sem nome)'}")
+
+    query = _clean_company_value(result.get("query_used"))
+    if query:
+        typer.echo(f"Pesquisa usada: {query}")
+
+    url = _clean_company_value(result.get("url"))
+    domain = _clean_company_value(result.get("domain"))
+    confidence = _clean_company_value(result.get("confidence"))
+    typer.echo(f"Site: {url or '(nenhum encontrado)'}")
+    if domain:
+        typer.echo(f"Domínio: {domain}")
+    typer.echo(f"Confiança: {confidence or 'desconhecida'}")
+
+    nif = _clean_company_value(result.get("nif"))
+    address = _clean_company_value(result.get("address"))
+    email = _clean_company_value(result.get("email"))
+    if nif:
+        typer.echo(f"NIF: {nif}")
+    if address:
+        typer.echo(f"Morada: {address}")
+    if email:
+        typer.echo(f"Email: {email}")
+
+    verified = result.get("registry_verified")
+    if verified is True:
+        typer.echo("Registo público (Racius): dados confirmados")
+    elif verified is False:
+        typer.echo("Registo público (Racius): dados NÃO confirmados")
+    else:
+        typer.echo("Registo público (Racius): não consultado")
+
+    note = _clean_company_value(result.get("note"))
+    if note:
+        typer.echo(f"Nota: {note}")
+
+    nameservers = _company_nameservers(result)
+    if nameservers:
+        typer.echo(f"Nameservers: {', '.join(nameservers)}")
+
+    typer.echo("")
+
+
+def _company_nameservers(result: dict) -> list:
+    """
+    Devolve os nameservers do resultado de get_company_urls() como lista.
+
+    Nota: quando o WHOIS não devolve nada, o motor troca a lista vazia pela
+    string "not available" — por isso não se pode assumir que este campo é
+    sempre uma lista.
+
+    :param result: Dicionário devolvido por get_company_urls().
+    :return: Lista de nameservers (vazia se não houver informação).
+    """
+    value = _clean_company_value(result.get("nameservers"))
+    if not value:
+        return []
+    if isinstance(value, str):
+        return [value]
+    return [str(ns) for ns in value]
+
+
+def _resolve_company(company_json: str, force: bool = False) -> dict:
+    """
+    Resolve o site oficial de uma empresa a partir dos seus dados em JSON,
+    usando o company_info, e decide se a análise RGPD deve prosseguir.
+
+    Gate de confiança aplicado ao resultado:
+      - sem site encontrado -> bloqueia sempre (não há nada para analisar,
+        e o --force não ajuda);
+      - confidence "low"    -> bloqueia por omissão; com --force avisa e segue;
+      - confidence "medium" -> avisa e segue (sem precisar de --force);
+      - confidence "high"   -> segue, mensagem apenas informativa;
+      - registry_verified False -> nunca bloqueia (é sobre a fiabilidade do
+        NIF/morada, não sobre a identidade do site); o aviso segue também
+        para o relatório final, através do campo `note`.
+
+    :param company_json: String JSON com os dados da empresa (campo
+        "company_name" obrigatório; "legal_name", "country" e "address"
+        opcionais mas recomendados).
+    :param force: Se True, prossegue mesmo com confiança baixa.
+    :return: Dicionário de get_company_urls(), com o "legal_name" do input
+        acrescentado quando existe (o resultado original não é alterado —
+        trabalhamos sobre uma cópia).
+    :raises typer.Exit: código 1 em qualquer erro desta fase (JSON inválido,
+        falha na resolução, ou gate de confiança).
+    """
+    try:
+        company = json.loads(company_json)
+    except json.JSONDecodeError as exc:
+        typer.echo(f"[ERRO] Dados da empresa inválidos: não é JSON válido ({exc.msg}).")
+        typer.echo(
+            "Exemplo: vigilantia scan '{\"company_name\": \"Feedzai\", \"country\": \"Portugal\"}'"
+        )
+        raise typer.Exit(code=1)
+
+    if not isinstance(company, dict):
+        typer.echo("[ERRO] Os dados da empresa têm de ser um objeto JSON (ex: {\"company_name\": \"...\"}).")
+        raise typer.Exit(code=1)
+
+    company_name = str(company.get("company_name") or "").strip()
+    if not company_name:
+        typer.echo("[ERRO] Falta o campo obrigatório \"company_name\" nos dados da empresa.")
+        raise typer.Exit(code=1)
+
+    get_company_urls = _load_get_company_urls()
+
+    typer.echo(f"\nA procurar o site oficial de: {company_name}\n")
+    try:
+        result = get_company_urls(company)
+    except Exception as exc:
+        typer.echo(f"[ERRO] Não foi possível resolver o site da empresa ({exc}).")
+        raise typer.Exit(code=1)
+
+    if not isinstance(result, dict):
+        typer.echo("[ERRO] A descoberta do site devolveu um resultado inesperado.")
+        raise typer.Exit(code=1)
+
+    # Cópia local: o resultado devolvido nunca é alterado no sítio.
+    result = dict(result)
+    # O motor não devolve "legal_name" (só o usa para pesquisar e validar),
+    # por isso transportamos o que veio no input para o relatório e para a
+    # base de dados. Se não foi fornecido, fica ausente — o nome comercial
+    # (company_name) é usado como alternativa onde for preciso mostrar um nome.
+    if not _clean_company_value(result.get("legal_name")):
+        result["legal_name"] = _clean_company_value(company.get("legal_name"))
+
+    _echo_company_resolution(result)
+
+    url = _clean_company_value(result.get("url"))
+    if not url:
+        typer.echo(
+            "[ERRO] Não foi encontrado nenhum site oficial para esta empresa — "
+            "sem URL não há nada para analisar (o --force não resolve este caso)."
+        )
+        typer.echo(
+            "Sugestão: acrescentar \"legal_name\" e/ou \"address\" aos dados da "
+            "empresa, ou analisar o site diretamente com: vigilantia scan <url>"
+        )
+        raise typer.Exit(code=1)
+
+    confidence = str(_clean_company_value(result.get("confidence")) or "").lower()
+
+    if confidence == "low":
+        if not force:
+            typer.echo(
+                f"[ERRO] Confiança BAIXA em {url} como site oficial de \"{company_name}\". "
+                "Análise cancelada para não auditar o site errado."
+            )
+            typer.echo(
+                "Sugestões: acrescentar \"legal_name\" e/ou \"address\" aos dados da "
+                "empresa para melhorar a pesquisa, ou repetir o comando com --force "
+                "se este for mesmo o site pretendido."
+            )
+            raise typer.Exit(code=1)
+        typer.echo(
+            f"[AVISO] Confiança BAIXA em {url}, mas foi pedido --force: a prosseguir. "
+            "Confirmar que o relatório diz respeito ao site certo.\n"
+        )
+    elif confidence == "medium":
+        typer.echo(
+            f"[AVISO] Confiança MÉDIA em {url} como site oficial. A análise prossegue, "
+            "mas convém confirmar o site antes de usar o relatório.\n"
+        )
+
+    if result.get("registry_verified") is False:
+        typer.echo(
+            "[AVISO] NIF/morada obtidos no registo público NÃO foram confirmados — "
+            "podem pertencer a outra empresa com nome semelhante. Este aviso fica "
+            "também registado no relatório final.\n"
+        )
+
+    return result
+
+
+def run_scan(    url: str,
+    company_result: Optional[dict] = None,
+) -> None:
     """
     Executa a análise RGPD completa para o URL indicado:
     - scraping real do site (Playwright + extractor)
@@ -177,6 +463,14 @@ def run_scan(url: str) -> None:
     Esta função é partilhada pelos dois pontos de entrada do projeto
     (o comando `vigilantia scan <url>` e o script interativo
     run_vigilantia_mvp.py), para evitar lógica duplicada e divergente.
+
+    :param url: URL do site a analisar.
+    :param company_result: Resultado de get_company_urls() (opcional). Quando o
+        scan arranca a partir dos dados de uma empresa, os campos relevantes
+        (nome legal, NIF, morada, verificação no registo público, nota e
+        nameservers) são juntos ao SiteData para aparecerem no relatório.
+        São puramente informativos: o motor de regras RGPD não os lê, pelo
+        que nenhuma regra muda de resultado por causa deles.
     """
     typer.echo(f"\nA iniciar análise RGPD para: {url}\n")
 
@@ -192,6 +486,30 @@ def run_scan(url: str) -> None:
         typer.echo(f"Erro no scraper: {exc}")
         _persist_scan_failure(scan_run_id, str(exc))
         raise typer.Exit(code=1)
+
+    # 1b) Dados da empresa (opcional) → SiteData
+    #
+    # Quando o scan arrancou a partir dos dados de uma empresa (company_info),
+    # juntamos aqui os campos devolvidos por esse script ao SiteData, usando
+    # model_copy(update=...) — o padrão Pydantic já usado no resto do projeto.
+    # A partir deste ponto o SiteData transporta também a identificação da
+    # empresa, que o reporter usa para a secção "Dados da empresa" do
+    # relatório HTML. Num scan normal por URL, company_result é None e nada
+    # disto acontece.
+    if company_result:
+        site_data = site_data.model_copy(
+            update={
+                "company_legal_name": (
+                    _clean_company_value(company_result.get("legal_name"))
+                    or _clean_company_value(company_result.get("company_name"))
+                ),
+                "company_nif": _clean_company_value(company_result.get("nif")),
+                "company_address": _clean_company_value(company_result.get("address")),
+                "company_registry_verified": company_result.get("registry_verified"),
+                "company_note": _clean_company_value(company_result.get("note")),
+                "company_nameservers": _company_nameservers(company_result),
+            }
+        )
 
     # 2) Política de privacidade → flags (direitos RGPD mencionados no texto)
     #
@@ -276,6 +594,7 @@ def run_scan(url: str) -> None:
         findings=findings,
         total_cookies=len(cookies),
         tracking_cookies=tracking_cookies,
+        site_data=site_data,
     )
 
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -296,34 +615,84 @@ def run_scan(url: str) -> None:
     # falha aqui nunca ponha em causa a entrega do relatório ao utilizador.
     _persist_scan_result(scan_run_id, findings, report_id)
 
+    # 8b) Grava os dados da empresa (tabela Companies), se este scan tiver
+    # arrancado a partir dos dados de uma empresa. Também fail-soft.
+    _persist_company(url, company_result)
+
     # 9) Envia as não-conformidades para o dashboard de incidências (MSSQL remoto).
     # Fail-soft: falhas no dashboard não impedem o fim do scan.
     _report_to_dashboard(url, findings)
 
 
 @app.command()
-def scan(url: str = typer.Argument(..., help="Target website URL (e.g. https://example.com)")):
+def scan(
+    target: str = typer.Argument(
+        ...,
+        help=(
+            "URL do site (ex: https://example.com) OU os dados da empresa em JSON "
+            "(ex: '{\"company_name\": \"Feedzai\", \"country\": \"Portugal\"}'), "
+            "caso em que o site oficial é descoberto automaticamente."
+        ),
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help=(
+            "Analisar mesmo quando a confiança na identificação do site a partir "
+            "dos dados da empresa for baixa. Não tem efeito quando é passado um URL."
+        ),
+    ),
+):
     """
     Comando do Typer que expõe run_scan() na linha de comandos.
+
+    Aceita duas formas do mesmo pedido:
+
+      1. Um URL, como sempre:
+         vigilantia scan https://exemplo.pt
+
+      2. Os dados da empresa em JSON (começa por "{"), caso em que o site
+         oficial é primeiro descoberto pelo company_info e só depois
+         analisado — e os dados da empresa (NIF, morada, verificação no
+         registo público, nameservers) passam a constar do relatório:
+         vigilantia scan '{\"company_name\": \"Feedzai\", \"country\": \"Portugal\"}'
 
     Como esta é a única @app.command() definida, o Typer trata-a como
     comando por omissão da aplicação — ou seja, usa-se
     "vigilantia https://exemplo.pt" diretamente, sem escrever a palavra
     "scan" (isso daria erro de "unexpected extra argument").
 
-    Antes de chamar run_scan(), valida o formato do URL com o UrlModel
-    (Pydantic), para dar um erro claro em português caso o URL esteja
-    mal formado, em vez de deixar o erro rebentar mais fundo no scraper.
+    Em ambos os casos, antes de chamar run_scan() valida-se o formato do URL
+    com o UrlModel (Pydantic), para dar um erro claro em português caso o URL
+    esteja mal formado, em vez de deixar o erro rebentar mais fundo no scraper.
 
-    :param url: URL do site a analisar, passado como argumento na linha de comandos.
+    :param target: URL do site a analisar, ou JSON com os dados da empresa.
+    :param force: Prosseguir mesmo com confiança baixa na resolução do site
+        (só se aplica quando é passado o JSON da empresa).
     """
+    company_result = None
+
+    if target.lstrip().startswith("{"):
+        # Fase de resolução da empresa: qualquer erro aqui (JSON inválido,
+        # falha na pesquisa, confiança insuficiente) termina com código 1,
+        # antes de o scraper sequer arrancar.
+        company_result = _resolve_company(target, force=force)
+        url = _clean_company_value(company_result.get("url"))
+    else:
+        url = target
+        if force:
+            typer.echo(
+                "[AVISO] --force só se aplica quando são passados os dados da "
+                "empresa em JSON; a ser ignorado.\n"
+            )
+
     try:
         UrlModel(target_url=url)
     except ValidationError:
         typer.echo("URL inválido. Por favor, forneça um URL completo (ex: https://example.com).")
         raise typer.Exit(code=1)
 
-    run_scan(url)
+    run_scan(url, company_result=company_result)
 
 
 def main():

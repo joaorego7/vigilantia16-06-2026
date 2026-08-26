@@ -196,3 +196,97 @@ class FindingRepository(BaseRepository):
                     finding.recommendation,
                     evidence_json,
                 )
+
+class CompanyRepository(BaseRepository):
+    """
+    Repositório para a tabela Companies: os dados da empresa dona de um
+    Website, quando o scan foi iniciado a partir dos dados da empresa em vez
+    de um URL (ver company_info.py e o comando `scan` no cli.py).
+
+    Um Website tem no máximo uma empresa — por isso a operação é um upsert:
+    o scan seguinte da mesma empresa atualiza a linha em vez de acumular
+    duplicados.
+    """
+
+    def upsert(
+        self,
+        website_id: int,
+        name: str,
+        legal_name: Optional[str] = None,
+        nif: Optional[str] = None,
+        address: Optional[str] = None,
+        registry_verified: Optional[bool] = None,
+        note: Optional[str] = None,
+        nameservers: Optional[Sequence[str]] = None,
+    ) -> int:
+        """
+        Grava (ou atualiza) os dados da empresa associada a um Website.
+
+        :param website_id: WebsiteId devolvido por WebsiteRepository.get_or_create().
+        :param name: Nome comercial pesquisado (obrigatório).
+        :param legal_name: Nome legal completo, se conhecido.
+        :param nif: NIF/número de contribuinte, se encontrado.
+        :param address: Morada da sede, se encontrada.
+        :param registry_verified: True/False/None conforme o registo público
+            confirmou, não confirmou, ou não foi consultado.
+        :param note: Nota sobre a origem/fiabilidade dos dados.
+        :param nameservers: Lista de nameservers do domínio (WHOIS).
+        :return: CompanyId do registo criado ou atualizado (0 se não houver BD).
+        """
+        if self._is_none or not website_id:
+            return 0
+
+        verified = None if registry_verified is None else int(bool(registry_verified))
+        nameservers_json = json.dumps(list(nameservers), ensure_ascii=False) if nameservers else None
+        values = (name, legal_name, nif, address, verified, note, nameservers_json)
+
+        cursor = self._conn.cursor()
+
+        if self._is_sqlite:
+            cursor.execute(
+                "SELECT CompanyId FROM Companies WHERE WebsiteId = ?", (website_id,)
+            )
+        else:
+            cursor.execute(
+                "SELECT CompanyId FROM Companies WHERE WebsiteId = ?", website_id
+            )
+
+        row = cursor.fetchone()
+
+        if row is not None:
+            company_id = int(row[0])
+            if self._is_sqlite:
+                cursor.execute(
+                    "UPDATE Companies SET Name = ?, LegalName = ?, Nif = ?, "
+                    "Address = ?, RegistryVerified = ?, Note = ?, "
+                    "NameserversJson = ?, UpdatedAt = datetime('now') "
+                    "WHERE CompanyId = ?",
+                    values + (company_id,),
+                )
+            else:
+                cursor.execute(
+                    "UPDATE Companies SET Name = ?, LegalName = ?, Nif = ?, "
+                    "Address = ?, RegistryVerified = ?, Note = ?, "
+                    "NameserversJson = ?, UpdatedAt = SYSUTCDATETIME() "
+                    "WHERE CompanyId = ?",
+                    *(values + (company_id,)),
+                )
+            return company_id
+
+        if self._is_sqlite:
+            cursor.execute(
+                "INSERT INTO Companies "
+                "(WebsiteId, Name, LegalName, Nif, Address, RegistryVerified, "
+                "Note, NameserversJson) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (website_id,) + values,
+            )
+            return int(cursor.lastrowid)
+
+        cursor.execute(
+            "INSERT INTO Companies "
+            "(WebsiteId, Name, LegalName, Nif, Address, RegistryVerified, "
+            "Note, NameserversJson) "
+            "OUTPUT INSERTED.CompanyId VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            *((website_id,) + values),
+        )
+        return int(cursor.fetchone()[0])
